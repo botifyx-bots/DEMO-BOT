@@ -6,7 +6,7 @@ from flask import Flask
 from pyrogram import Client, filters
 from pyrogram.enums import ParseMode
 
-# ========== CONFIG ==========
+# ========== CONFIG ==========      # CHANGE'S ONLY HERE FOR RUNNING DEMO
 API_ID = 12345678        # your api id
 API_HASH = "YOUR_API_HASH"
 BOT_TOKEN = "YOUR_BOT_TOKEN"
@@ -57,3 +57,4 @@ def run_web():
 if __name__ == "__main__":
     threading.Thread(target=run_web).start()
     bot.run()
+
