@@ -7,9 +7,9 @@ from pyrogram import Client, filters
 from pyrogram.enums import ParseMode
 
 # ========== CONFIG ==========      # CHANGE'S ONLY HERE FOR RUNNING DEMO
-API_ID = 12345678        # your api id
-API_HASH = "YOUR_API_HASH"
-BOT_TOKEN = "YOUR_BOT_TOKEN"
+API_ID = 27226524        # your api id
+API_HASH = "a14c9cd4629fde6b4d9b8c77df00fb00"
+BOT_TOKEN = "8495846696:AAGcbqhSBKjQbVQGLjaN2x3Wgwxl09qZkbo"
 # ============================
 
 bot = Client(
@@ -57,4 +57,5 @@ def run_web():
 if __name__ == "__main__":
     threading.Thread(target=run_web).start()
     bot.run()
+
 
