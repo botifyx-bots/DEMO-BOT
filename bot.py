@@ -99,9 +99,9 @@ async def handle_callbacks(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif query.data == "about":
         about_text = (
-            "<pre>BOT INFORMATION AND STATISTICS</pre>\n\n"
-            "<blockquote> <b>»» My Name :</b>"
-            "<a href='https://t.me/MORVESSA_NIGHTMARE_BOT'>𝙈𝙊𝙍𝙑𝙀𝙎𝙎𝘼</a>\n"
+            "<code>BOT INFORMATION AND STATISTICS</code>\n\n"
+            "<blockquote expandable> <b>»» My Name :</b>"
+            "<a href='@Seris_auto_approval_bot'>𝐒𝐄𝐑𝐈𝐒</a>\n"
             "<b>»» Developer :</b> @Akuma_Rei_Kami\n"
             "<b>»» Library :</b> <a href='https://docs.pyrogram.org/'>Pyrogram v2</a>\n"
             "<b>»» Language :</b> <a href='https://www.python.org/'>Python 3</a>\n"
@@ -153,3 +153,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
