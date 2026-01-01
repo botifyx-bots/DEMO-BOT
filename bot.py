@@ -23,6 +23,7 @@ from telegram import constants
 BOT_TOKEN = "8495846696:AAGcbqhSBKjQbVQGLjaN2x3Wgwxl09qZkbo"
 
 PHOTO_MAIN = "AgACAgUAAxkBAAM1aVaegv6Pszyh9ZvpftAxw9GaPFcAAhQLaxsxubhWSyRRVjsF2A8ACAEAAwIAA3kABx4E"
+PHOTO_ABOUT = "AgACAgUAAxkBAAM5aVagPt-P0QYVBSF-iY8K_bB2C_IAAhgLaxsxubhW8ti1nJgvUJIACAEAAwIAA3kABx4E"
 
 # =========================================
 
@@ -31,43 +32,59 @@ logging.basicConfig(
     level=logging.INFO
 )
 
-# ---------- FLASK WEB SERVER (Single Port) ----------
+# ---------- FLASK WEB SERVER (RENDER SINGLE PORT) ----------
 
 flask_app = Flask(__name__)
 
 @flask_app.route("/")
 def home():
-    return "Bot is running successfully!", 200
+    return "Bot is running!", 200
 
 def run_flask():
-    # Render automatically provides PORT
     flask_app.run(host="0.0.0.0")
+
+# ---------- KEYBOARDS (REUSED) ----------
+
+def start_keyboard():
+    return InlineKeyboardMarkup(
+        [
+            [InlineKeyboardButton("➥ 𝐀𝐁𝐎𝐔𝐓", callback_data="about")],
+            [
+                InlineKeyboardButton("➥ 𝗢𝗪𝗡𝗘𝗥", url="https://t.me/Akuma_Rei_Kami"),
+                InlineKeyboardButton("➥ 𝐍𝐄𝐓𝐖𝐎𝐑𝐊", url="https://t.me/BotifyX_Pro")
+            ],
+            [InlineKeyboardButton("➥ 𝗖𝗟𝗢𝗦𝗘", callback_data="close_msg")]
+        ]
+    )
+
+def about_keyboard():
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton("➥ SUPPORT", url="https://t.me/BotifyX_support")
+            ],
+            [   InlineKeyboardButton("« BACK", callback_data="back_to_start"),
+                InlineKeyboardButton("➥ CLOSE", callback_data="close_msg")
+            ]
+        ]
+    )
 
 # ---------- /START COMMAND ----------
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("➥ 𝐀𝐁𝐎𝐔𝐓", callback_data="about")],
-        [
-            InlineKeyboardButton("➥ 𝗢𝗪𝗡𝗘𝗥", url="https://t.me/Akuma_Rei_Kami"),
-            InlineKeyboardButton("➥ 𝐍𝐄𝐓𝐖𝐎𝐑𝐊", url="https://t.me/+YM2e5j3C3pgzMmVl")
-        ],
-        [InlineKeyboardButton("➥ 𝗖𝗟𝗢𝗦𝗘", callback_data="close_msg")]
-    ])
-
     caption = (
-        "<b>WELCOME TO THE AUTO APPROVAL SYSTEM</b>\n\n"
-        "<blockquote>"
-        "This bot automatically approves join requests\n"
-        "and manages access smoothly & securely.\n\n"
-        "<b>Status:</b> Active ✅"
-        "</blockquote>"
+        "<code>WELCOME TO THE ADVANCED AUTO APPROVAL SYSTEM.\n"
+        "WITH THIS BOT, YOU CAN MANAGE JOIN REQUESTS AND\n"
+        "KEEP YOUR CHANNELS SECURE.</code>\n\n"
+        "<blockquote><b>➥ MAINTAINED BY : "
+        "<a href='https://t.me/Akuma_Rei_Kami'>Akuma_Rei</a>"
+        "</b></blockquote>"
     )
 
     await update.message.reply_photo(
         photo=PHOTO_MAIN,
         caption=caption,
-        reply_markup=keyboard,
+        reply_markup=start_keyboard(),
         parse_mode=constants.ParseMode.HTML
     )
 
@@ -81,45 +98,35 @@ async def handle_callbacks(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.message.delete()
 
     elif query.data == "about":
-        about_keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("➥ SUPPORT", url="https://t.me/BotifyX_support")],
-            [
-                InlineKeyboardButton("« BACK", callback_data="back_to_start"),
-                InlineKeyboardButton("➥ CLOSE", callback_data="close_msg")
-            ]
-        ])
-
         about_text = (
-            "<b>BOT INFORMATION</b>\n\n"
-            "<blockquote>"
-            "<b>» Developer :</b> @Akuma_Rei_Kami\n"
-            "<b>» Library :</b> PTB v20+\n"
-            "<b>» Database :</b> Local JSON\n"
+            "<pre>BOT INFORMATION AND STATISTICS</pre>\n\n"
+            "<blockquote> <b>»» My Name :</b>"
+            "<a href='https://t.me/MORVESSA_NIGHTMARE_BOT'>𝙈𝙊𝙍𝙑𝙀𝙎𝙎𝘼</a>\n"
+            "<b>»» Developer :</b> @Akuma_Rei_Kami\n"
+            "<b>»» Library :</b> <a href='https://docs.pyrogram.org/'>Pyrogram v2</a>\n"
+            "<b>»» Language :</b> <a href='https://www.python.org/'>Python 3</a>\n"
+            "<b>»» Database :</b> <a href='https://www.mongodb.com/docs/'>MongoDB</a>\n"
+            "<b>»» Hosting :</b> <a href='https://render.com/'>Render</a>"
             "</blockquote>"
         )
 
         await query.edit_message_media(
             media=InputMediaPhoto(
-                media=PHOTO_MAIN,
+                media=PHOTO_ABOUT,
                 caption=about_text,
                 parse_mode=constants.ParseMode.HTML
             ),
-            reply_markup=about_keyboard
+            reply_markup=about_keyboard()
         )
 
     elif query.data == "back_to_start":
-        main_keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("➥ 𝐀𝐁𝐎𝐔𝐓", callback_data="about")],
-            [
-                InlineKeyboardButton("➥ 𝗢𝗪𝗡𝗘𝗥", url="https://t.me/Akuma_Rei_Kami"),
-                InlineKeyboardButton("➥ 𝐍𝐄𝐓𝐖𝐎𝐑𝐊", url="https://t.me/+YM2e5j3C3pgzMmVl")
-            ],
-            [InlineKeyboardButton("➥ 𝗖𝗟𝗢𝗦𝗘", callback_data="close_msg")]
-        ])
-
         main_caption = (
-            "<b>WELCOME TO THE AUTO APPROVAL SYSTEM</b>\n"
-            "<code>Status: Active</code>"
+            "<code>WELCOME TO THE ADVANCED AUTO APPROVAL SYSTEM.\n"
+            "WITH THIS BOT, YOU CAN MANAGE JOIN REQUESTS AND\n"
+            "KEEP YOUR CHANNELS SECURE.</code>\n\n"
+            "<blockquote><b>➥ MAINTAINED BY : "
+            "<a href='https://t.me/Akuma_Rei_Kami'>Akuma_Rei</a>"
+            "</b></blockquote>"
         )
 
         await query.edit_message_media(
@@ -128,7 +135,7 @@ async def handle_callbacks(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 caption=main_caption,
                 parse_mode=constants.ParseMode.HTML
             ),
-            reply_markup=main_keyboard
+            reply_markup=start_keyboard()
         )
 
 # ---------- MAIN ----------
