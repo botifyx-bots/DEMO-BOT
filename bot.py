@@ -30,10 +30,7 @@ BOT_TOKEN = "8495846696:AAGcbqhSBKjQbVQGLjaN2x3Wgwxl09qZkbo"
 
 PHOTO_MAIN = "AgACAgUAAxkBAAM1aVaegv6Pszyh9ZvpftAxw9GaPFcAAhQLaxsxubhWSyRRVjsF2A8ACAEAAwIAA3kABx4E"
 PHOTO_ABOUT = "AgACAgUAAxkBAAM5aVagPt-P0QYVBSF-iY8K_bB2C_IAAhgLaxsxubhW8ti1nJgvUJIACAEAAwIAA3kABx4E"
-
 RESTART_PHOTO_ID = "AgACAgUAAxkBAAM7aVajLkigiY4oCHYNgkaVqUfEB9MAAhsLaxsxubhWFWCpbMwqccwACAEAAwIAA3kABx4E"
-
-
 
 # ---------- DATABASE ----------
 MONGO_URI = "mongodb+srv://ANI_OTAKU:ANI_OTAKU@cluster0.t3frstc.mongodb.net/?appName=Cluster0"
@@ -46,11 +43,7 @@ users_col = db["users"]
 restart_col = db["restart"]
 ban_col = db["banned"]
 
-
-restart_col = db["restart"]
-ban_col = db["banned"]
-
-OWNER_ID = 7156099919  # <-- PUT YOUR TELEGRAM ID HERE
+OWNER_ID = 7156099919
 
 BAN_WAIT = set()
 UNBAN_WAIT = set()
@@ -62,7 +55,7 @@ logging.basicConfig(
     level=logging.INFO
 )
 
-# ---------- FLASK WEB SERVER (RENDER) ----------
+# ---------- FLASK WEB SERVER ----------
 
 app = Flask(__name__)
 
@@ -90,11 +83,10 @@ def start_keyboard():
 def about_keyboard():
     return InlineKeyboardMarkup(
         [
+            [InlineKeyboardButton("➥ SUPPORT", url="https://t.me/BotifyX_support")],
             [
-                InlineKeyboardButton("➥ SUPPORT", url="https://t.me/BotifyX_support")
-            ],
-            [InlineKeyboardButton("« BACK", callback_data="back_to_start"),
-             InlineKeyboardButton("➥ CLOSE", callback_data="close_msg")
+                InlineKeyboardButton("« BACK", callback_data="back_to_start"),
+                InlineKeyboardButton("➥ CLOSE", callback_data="close_msg")
             ]
         ]
     )
@@ -102,6 +94,12 @@ def about_keyboard():
 # ---------- /START ----------
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    users_col.update_one(
+        {"_id": update.effective_user.id},
+        {"$set": {"_id": update.effective_user.id}},
+        upsert=True
+    )
+
     caption = (
         "<code>WELCOME TO THE ADVANCED AUTO APPROVAL SYSTEM.\n"
         "WITH THIS BOT, YOU CAN MANAGE JOIN REQUESTS AND\n"
@@ -166,25 +164,19 @@ async def handle_callbacks(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=start_keyboard()
         )
 
-# ---------- BAN ----------
+# ---------- BAN / UNBAN ----------
 
 async def ban_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != OWNER_ID:
         return
-
     BAN_WAIT.add(update.effective_user.id)
     await update.message.reply_text("send the user id")
-
-# ---------- UNBAN ----------
 
 async def unban_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != OWNER_ID:
         return
-
     UNBAN_WAIT.add(update.effective_user.id)
     await update.message.reply_text("send the user id")
-
-# ---------- PRIVATE HANDLER ----------
 
 async def private_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.message.text:
@@ -199,7 +191,6 @@ async def private_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if uid in BAN_WAIT:
         BAN_WAIT.remove(uid)
         ban_col.insert_one({"_id": int(text)})
-
         await update.message.reply_text(
             "<blockquote>✨ Successfully Banned the user</blockquote>",
             reply_markup=InlineKeyboardMarkup(
@@ -207,12 +198,10 @@ async def private_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ),
             parse_mode=constants.ParseMode.HTML
         )
-        return
 
-    if uid in UNBAN_WAIT:
+    elif uid in UNBAN_WAIT:
         UNBAN_WAIT.remove(uid)
         ban_col.delete_one({"_id": int(text)})
-
         await update.message.reply_text(
             "<blockquote>✨ Successfully Unbanned the user</blockquote>",
             reply_markup=InlineKeyboardMarkup(
@@ -220,7 +209,6 @@ async def private_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ),
             parse_mode=constants.ParseMode.HTML
         )
-        return
 
 # ---------- RESTART BROADCAST ----------
 
@@ -295,5 +283,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
