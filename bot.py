@@ -5,6 +5,7 @@ import uuid
 import asyncio
 from threading import Thread
 from flask import Flask
+from pymongo import MongoClient
 
 from telegram import (
     Update,
@@ -31,6 +32,19 @@ PHOTO_MAIN = "AgACAgUAAxkBAAM1aVaegv6Pszyh9ZvpftAxw9GaPFcAAhQLaxsxubhWSyRRVjsF2A
 PHOTO_ABOUT = "AgACAgUAAxkBAAM5aVagPt-P0QYVBSF-iY8K_bB2C_IAAhgLaxsxubhW8ti1nJgvUJIACAEAAwIAA3kABx4E"
 
 RESTART_PHOTO_ID = "AgACAgUAAxkBAAM7aVajLkigiY4oCHYNgkaVqUfEB9MAAhsLaxsxubhWFWCpbMwqccwACAEAAwIAA3kABx4E"
+
+
+
+# ---------- DATABASE ----------
+MONGO_URI = "mongodb+srv://ANI_OTAKU:ANI_OTAKU@cluster0.t3frstc.mongodb.net/?appName=Cluster0"
+
+mongo = MongoClient(MONGO_URI)
+db = mongo["bot_database"]
+
+users_col = db["users"]
+restart_col = db["restart"]
+ban_col = db["banned"]
+
 
 restart_col = db["restart"]
 ban_col = db["banned"]
@@ -280,3 +294,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
