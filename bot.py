@@ -26,7 +26,7 @@ from telegram import constants
 
 # ================= CONFIG =================
 
-BOT_TOKEN = "8495846696:AAHtbmIU0FLVipqY1v51F03BqsaU3CwSqI4"
+BOT_TOKEN = "8495846696:AAHwUx4wktmUxtt4dpMJUff9tNPbyu6am4A"
 
 PHOTO_MAIN = "AgACAgUAAxkBAAM1aVaegv6Pszyh9ZvpftAxw9GaPFcAAhQLaxsxubhWSyRRVjsF2A8ACAEAAwIAA3kABx4E"
 PHOTO_ABOUT = "AgACAgUAAxkBAAM5aVagPt-P0QYVBSF-iY8K_bB2C_IAAhgLaxsxubhW8ti1nJgvUJIACAEAAwIAA3kABx4E"
@@ -322,3 +322,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
