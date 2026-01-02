@@ -32,7 +32,10 @@ PHOTO_MAIN = "AgACAgUAAxkBAAM1aVaegv6Pszyh9ZvpftAxw9GaPFcAAhQLaxsxubhWSyRRVjsF2A
 PHOTO_ABOUT = "AgACAgUAAxkBAAM5aVagPt-P0QYVBSF-iY8K_bB2C_IAAhgLaxsxubhW8ti1nJgvUJIACAEAAwIAA3kABx4E"
 RESTART_PHOTO_ID = "AgACAgUAAxkBAAM7aVajLkigiY4oCHYNgkaVqUfEB9MAAhsLaxsxubhWFWCpbMwqccwACAEAAwIAA3kABx4E"
 
+OWNER_ID = 7156099919
+
 # ---------- DATABASE ----------
+
 MONGO_URI = "mongodb+srv://ANI_OTAKU:ANI_OTAKU@cluster0.t3frstc.mongodb.net/?appName=Cluster0"
 DB_NAME = "ANI_OTAKU"
 
@@ -42,8 +45,6 @@ db = mongo[DB_NAME]
 users_col = db["users"]
 restart_col = db["restart"]
 ban_col = db["banned"]
-
-OWNER_ID = 7156099919
 
 BAN_WAIT = set()
 UNBAN_WAIT = set()
@@ -55,7 +56,7 @@ logging.basicConfig(
     level=logging.INFO
 )
 
-# ---------- FLASK WEB SERVER ----------
+# ---------- FLASK ----------
 
 app = Flask(__name__)
 
@@ -116,7 +117,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode=constants.ParseMode.HTML
     )
 
-# ---------- CALLBACK HANDLER ----------
+# ---------- CALLBACKS ----------
 
 async def handle_callbacks(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -126,43 +127,26 @@ async def handle_callbacks(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.message.delete()
 
     elif query.data == "about":
-        about_text = (
-            "<pre>BOT INFORMATION AND STATISTICS</pre>\n\n"
-            "<blockquote><b>»» My Name :</b>"
-            "<a href='https://t.me/MORVESSA_NIGHTMARE_BOT'>𝙈𝙊𝙍𝙑𝙀𝙎𝙎𝘼</a>\n"
-            "<b>»» Developer :</b> @Akuma_Rei_Kami\n"
-            "<b>»» Library :</b> <a href='https://docs.pyrogram.org/'>Pyrogram v2</a>\n"
-            "<b>»» Language :</b> <a href='https://www.python.org/'>Python 3</a>\n"
-            "<b>»» Database :</b> <a href='https://www.mongodb.com/docs/'>MongoDB</a>\n"
-            "<b>»» Hosting :</b> <a href='https://render.com/'>Render</a>"
-            "</blockquote>"
-        )
-
         await query.edit_message_media(
             media=InputMediaPhoto(
                 media=PHOTO_ABOUT,
-                caption=about_text,
+                caption=(
+                    "<pre>BOT INFORMATION AND STATISTICS</pre>\n\n"
+                    "<blockquote><b>»» My Name :</b>"
+                    "<a href='https://t.me/MORVESSA_NIGHTMARE_BOT'>𝙈𝙊𝙍𝙑𝙀𝙎𝙎𝘼</a>\n"
+                    "<b>»» Developer :</b> @Akuma_Rei_Kami\n"
+                    "<b>»» Library :</b> Pyrogram v2\n"
+                    "<b>»» Language :</b> Python 3\n"
+                    "<b>»» Database :</b> MongoDB\n"
+                    "<b>»» Hosting :</b> Render</blockquote>"
+                ),
                 parse_mode=constants.ParseMode.HTML
             ),
             reply_markup=about_keyboard()
         )
 
     elif query.data == "back_to_start":
-        await query.edit_message_media(
-            media=InputMediaPhoto(
-                media=PHOTO_MAIN,
-                caption=(
-                    "<code>WELCOME TO THE ADVANCED AUTO APPROVAL SYSTEM.\n"
-                    "WITH THIS BOT, YOU CAN MANAGE JOIN REQUESTS AND\n"
-                    "KEEP YOUR CHANNELS SECURE.</code>\n\n"
-                    "<blockquote><b>➥ MAINTAINED BY : "
-                    "<a href='https://t.me/Akuma_Rei_Kami'>Akuma_Rei</a>"
-                    "</b></blockquote>"
-                ),
-                parse_mode=constants.ParseMode.HTML
-            ),
-            reply_markup=start_keyboard()
-        )
+        await start(update, context)
 
 # ---------- BAN / UNBAN ----------
 
@@ -193,9 +177,6 @@ async def private_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ban_col.insert_one({"_id": int(text)})
         await update.message.reply_text(
             "<blockquote>✨ Successfully Banned the user</blockquote>",
-            reply_markup=InlineKeyboardMarkup(
-                [[InlineKeyboardButton("➥ CLOSE", callback_data="close_msg")]]
-            ),
             parse_mode=constants.ParseMode.HTML
         )
 
@@ -204,9 +185,6 @@ async def private_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ban_col.delete_one({"_id": int(text)})
         await update.message.reply_text(
             "<blockquote>✨ Successfully Unbanned the user</blockquote>",
-            reply_markup=InlineKeyboardMarkup(
-                [[InlineKeyboardButton("➥ CLOSE", callback_data="close_msg")]]
-            ),
             parse_mode=constants.ParseMode.HTML
         )
 
@@ -214,33 +192,10 @@ async def private_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def broadcast_restart(application: Application):
     restart_id = uuid.uuid4().hex
-
-    last = restart_col.find_one({"_id": "last"})
-    if last and last.get("rid") == restart_id:
-        return
-
     restart_col.update_one(
         {"_id": "last"},
         {"$set": {"rid": restart_id}},
         upsert=True
-    )
-
-    caption = (
-        "<blockquote>"
-        "🔄 <code>Bot Restarted Successfully!</code>\n\n"
-        "✅ <code>Updates have been applied.</code>\n"
-        "🚀 <code>Bot is now online and running smoothly.</code>\n\n"
-        "<code>Thank you for your patience.</code>"
-        "</blockquote>"
-    )
-
-    buttons = InlineKeyboardMarkup(
-        [
-            [
-                InlineKeyboardButton("📢 Update Channel", url="https://t.me/BotifyX_Pro"),
-                InlineKeyboardButton("🆘 Support", url="https://t.me/BotifyX_support")
-            ]
-        ]
     )
 
     for user in users_col.find({}):
@@ -248,8 +203,7 @@ async def broadcast_restart(application: Application):
             await application.bot.send_photo(
                 chat_id=user["_id"],
                 photo=RESTART_PHOTO_ID,
-                caption=caption,
-                reply_markup=buttons,
+                caption="<blockquote>🔄 <code>Bot Restarted Successfully!</code></blockquote>",
                 parse_mode=constants.ParseMode.HTML
             )
         except RetryAfter as e:
@@ -278,7 +232,6 @@ def main():
     application.add_handler(CallbackQueryHandler(handle_callbacks))
     application.add_handler(MessageHandler(filters.TEXT & filters.ChatType.PRIVATE, private_handler))
 
-    print("Bot started successfully...")
     application.run_polling()
 
 if __name__ == "__main__":
