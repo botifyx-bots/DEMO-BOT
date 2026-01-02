@@ -40,7 +40,7 @@ Thread(target=run_flask).start()
 @bot.on_message(filters.command("start"))
 async def start_cmd(client, message):
 
-    caption = (
+    quote_text = (
         "<blockquote>"
         "<code>WELCOME TO THE ADVANCED AUTO APPROVAL SYSTEM.\n"
         "WITH THIS BOT, YOU CAN MANAGE JOIN REQUESTS AND\n"
@@ -51,25 +51,30 @@ async def start_cmd(client, message):
         "</blockquote>"
     )
 
-    buttons = InlineKeyboardMarkup(
-        [
-            [InlineKeyboardButton("➥ 𝐀𝐁𝐎𝐔𝐓", callback_data="about")],
-            [
-                InlineKeyboardButton("➥ 𝗢𝗪𝗡𝗘𝗥", url="https://t.me/Akuma_Rei_Kami"),
-                InlineKeyboardButton("➥ 𝐍𝐄𝐓𝐖𝐎𝐑𝐊", url="https://t.me/BotifyX_Pro")
-            ],
-            [InlineKeyboardButton("➥ 𝗖𝗟𝗢𝗦𝗘", callback_data="close_msg")]
-        ]
+    # 1️⃣ Send QUOTE message (this enables Telegram quote UI)
+    quote_msg = await message.reply_text(
+        quote_text,
+        parse_mode=ParseMode.HTML
     )
 
+    # 2️⃣ Send IMAGE + BUTTONS as reply
     await message.reply_photo(
         photo=PHOTO_MAIN,
-        caption=caption,
-        reply_markup=buttons,
-        parse_mode=ParseMode.HTML,
-        quote=True
+        reply_to_message_id=quote_msg.id,
+        reply_markup=InlineKeyboardMarkup(
+            [
+                [InlineKeyboardButton("➥ 𝐀𝐁𝐎𝐔𝐓", callback_data="about")],
+                [
+                    InlineKeyboardButton("➥ 𝗢𝗪𝗡𝗘𝗥", url="https://t.me/Akuma_Rei_Kami"),
+                    InlineKeyboardButton("➥ 𝐍𝐄𝐓𝐖𝐎𝐑𝐊", url="https://t.me/BotifyX_Pro")
+                ],
+                [InlineKeyboardButton("➥ 𝗖𝗟𝗢𝗦𝗘", callback_data="close_msg")]
+            ]
+        )
     )
+
 # ==================================================
 
 
 bot.run()
+
