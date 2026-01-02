@@ -26,16 +26,13 @@ from telegram import constants
 
 # ================= CONFIG =================
 
-BOT_TOKEN = "8495846696:AAGcbqhSBKjQbVQGLjaN2x3Wgwxl09qZkbo"
+BOT_TOKEN = "8495846696:AAHtbmIU0FLVipqY1v51F03BqsaU3CwSqI4"
 
 PHOTO_MAIN = "AgACAgUAAxkBAAM1aVaegv6Pszyh9ZvpftAxw9GaPFcAAhQLaxsxubhWSyRRVjsF2A8ACAEAAwIAA3kABx4E"
 PHOTO_ABOUT = "AgACAgUAAxkBAAM5aVagPt-P0QYVBSF-iY8K_bB2C_IAAhgLaxsxubhW8ti1nJgvUJIACAEAAwIAA3kABx4E"
 RESTART_PHOTO_ID = "AgACAgUAAxkBAAM7aVajLkigiY4oCHYNgkaVqUfEB9MAAhsLaxsxubhWFWCpbMwqccwACAEAAwIAA3kABx4E"
 
-OWNER_ID = 7156099919
-
 # ---------- DATABASE ----------
-
 MONGO_URI = "mongodb+srv://ANI_OTAKU:ANI_OTAKU@cluster0.t3frstc.mongodb.net/?appName=Cluster0"
 DB_NAME = "ANI_OTAKU"
 
@@ -45,6 +42,8 @@ db = mongo[DB_NAME]
 users_col = db["users"]
 restart_col = db["restart"]
 ban_col = db["banned"]
+
+OWNER_ID = 7156099919
 
 BAN_WAIT = set()
 UNBAN_WAIT = set()
@@ -56,7 +55,7 @@ logging.basicConfig(
     level=logging.INFO
 )
 
-# ---------- FLASK ----------
+# ---------- FLASK WEB SERVER ----------
 
 app = Flask(__name__)
 
@@ -92,7 +91,7 @@ def about_keyboard():
         ]
     )
 
-# ---------- /START ----------
+# ---------- START (MESSAGE ONLY) ----------
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     users_col.update_one(
@@ -117,7 +116,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode=constants.ParseMode.HTML
     )
 
-# ---------- CALLBACKS ----------
+# ---------- CALLBACK HANDLER ----------
 
 async def handle_callbacks(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -132,7 +131,7 @@ async def handle_callbacks(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 media=PHOTO_ABOUT,
                 caption=(
                     "<code>BOT INFORMATION AND STATISTICS</code>\n\n"
-                    "<blockquote><b>»» My Name :</b>"
+                    "<blockquote expandable><b>»» My Name :</b>"
                     "<a href='https://t.me/Seris_auto_approval_bot'>𝐒𝐄𝐑𝐈𝐒</a>\n"
                     "<b>»» Developer :</b> @Akuma_Rei_Kami\n"
                     "<b>»» Library :</b> <a href='https://docs.pyrogram.org/'>Pyrogram v2</a>\n"
@@ -147,7 +146,21 @@ async def handle_callbacks(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
     elif query.data == "back_to_start":
-        await start(update, context)
+        await query.edit_message_media(
+            media=InputMediaPhoto(
+                media=PHOTO_MAIN,
+                caption=(
+                    "<code>WELCOME TO THE ADVANCED AUTO APPROVAL SYSTEM.\n"
+                    "WITH THIS BOT, YOU CAN MANAGE JOIN REQUESTS AND\n"
+                    "KEEP YOUR CHANNELS SECURE.</code>\n\n"
+                    "<blockquote><b>➥ MAINTAINED BY : "
+                    "<a href='https://t.me/Akuma_Rei_Kami'>Akuma_Rei</a>"
+                    "</b></blockquote>"
+                ),
+                parse_mode=constants.ParseMode.HTML
+            ),
+            reply_markup=start_keyboard()
+        )
 
 # ---------- BAN / UNBAN ----------
 
@@ -193,10 +206,24 @@ async def private_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def broadcast_restart(application: Application):
     restart_id = uuid.uuid4().hex
+
+    last = restart_col.find_one({"_id": "last"})
+    if last and last.get("rid") == restart_id:
+        return
+
     restart_col.update_one(
         {"_id": "last"},
         {"$set": {"rid": restart_id}},
         upsert=True
+    )
+
+    caption = (
+        "<blockquote>"
+        "🔄 <b>Bot Restarted Successfully!\n\n"
+        "✅ Updates have been applied.\n"
+        "🚀 Bot is now online and running smoothly.\n\n"
+        "Thank you for your patience.</b>"
+        "</blockquote>"
     )
 
     for user in users_col.find({}):
@@ -204,7 +231,7 @@ async def broadcast_restart(application: Application):
             await application.bot.send_photo(
                 chat_id=user["_id"],
                 photo=RESTART_PHOTO_ID,
-                caption="<blockquote>🔄 <code>Bot Restarted Successfully!</code></blockquote>",
+                caption=caption,
                 parse_mode=constants.ParseMode.HTML
             )
         except RetryAfter as e:
