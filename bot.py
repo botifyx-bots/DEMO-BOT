@@ -1,76 +1,57 @@
 # -*- coding: utf-8 -*-
 
-import logging
-import uuid
-import asyncio
-from threading import Thread
+from pyrogram import Client, filters
+from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from pyrogram.enums import ParseMode
+
 from flask import Flask
-from pymongo import MongoClient
+from threading import Thread
 
-from telegram import (
-    Update,
-    InlineKeyboardButton,
-    InlineKeyboardMarkup,
-    InputMediaPhoto
-)
-from telegram.ext import (
-    Application,
-    CommandHandler,
-    CallbackQueryHandler,
-    ContextTypes,
-    MessageHandler,
-    filters
-)
-from telegram.error import RetryAfter
-from telegram import constants
-
-# ================= CONFIG =================
-
+# ================= BOT CONFIG =================
+API_ID = 27226524
+API_HASH = "a14c9cd4629fde6b4d9b8c77df00fb00"
 BOT_TOKEN = "8495846696:AAGcbqhSBKjQbVQGLjaN2x3Wgwxl09qZkbo"
+# ============================================
 
 PHOTO_MAIN = "AgACAgUAAxkBAAM1aVaegv6Pszyh9ZvpftAxw9GaPFcAAhQLaxsxubhWSyRRVjsF2A8ACAEAAwIAA3kABx4E"
-PHOTO_ABOUT = "AgACAgUAAxkBAAM5aVagPt-P0QYVBSF-iY8K_bB2C_IAAhgLaxsxubhW8ti1nJgvUJIACAEAAwIAA3kABx4E"
-RESTART_PHOTO_ID = "AgACAgUAAxkBAAM7aVajLkigiY4oCHYNgkaVqUfEB9MAAhsLaxsxubhWFWCpbMwqccwACAEAAwIAA3kABx4E"
 
-OWNER_ID = 7156099919
-
-# ---------- DATABASE ----------
-
-MONGO_URI = "mongodb+srv://ANI_OTAKU:ANI_OTAKU@cluster0.t3frstc.mongodb.net/?appName=Cluster0"
-DB_NAME = "ANI_OTAKU"
-
-mongo = MongoClient(MONGO_URI)
-db = mongo[DB_NAME]
-
-users_col = db["users"]
-restart_col = db["restart"]
-ban_col = db["banned"]
-
-BAN_WAIT = set()
-UNBAN_WAIT = set()
-
-# =========================================
-
-logging.basicConfig(
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    level=logging.INFO
+bot = Client(
+    "auto_approval_bot",
+    api_id=API_ID,
+    api_hash=API_HASH,
+    bot_token=BOT_TOKEN
 )
 
-# ---------- FLASK ----------
-
+# ================= FLASK WEB SERVER =================
 app = Flask(__name__)
 
 @app.route("/")
 def home():
-    return "Bot is running!", 200
+    return "Bot is running!"
 
 def run_flask():
-    app.run(host="0.0.0.0")
+    app.run(host="0.0.0.0", port=8080)
 
-# ---------- KEYBOARDS ----------
+Thread(target=run_flask).start()
+# ====================================================
 
-def start_keyboard():
-    return InlineKeyboardMarkup(
+
+# ================= /START COMMAND =================
+@bot.on_message(filters.command("start"))
+async def start_cmd(client, message):
+
+    caption = (
+        "<blockquote>"
+        "<code>WELCOME TO THE ADVANCED AUTO APPROVAL SYSTEM.\n"
+        "WITH THIS BOT, YOU CAN MANAGE JOIN REQUESTS AND\n"
+        "KEEP YOUR CHANNELS SECURE.</code>\n\n"
+        "<b>➥ MAINTAINED BY : "
+        "<a href='https://t.me/Akuma_Rei_Kami'>Akuma_Rei</a>"
+        "</b>"
+        "</blockquote>"
+    )
+
+    buttons = InlineKeyboardMarkup(
         [
             [InlineKeyboardButton("➥ 𝐀𝐁𝐎𝐔𝐓", callback_data="about")],
             [
@@ -81,158 +62,14 @@ def start_keyboard():
         ]
     )
 
-def about_keyboard():
-    return InlineKeyboardMarkup(
-        [
-            [InlineKeyboardButton("➥ SUPPORT", url="https://t.me/BotifyX_support")],
-            [
-                InlineKeyboardButton("« BACK", callback_data="back_to_start"),
-                InlineKeyboardButton("➥ CLOSE", callback_data="close_msg")
-            ]
-        ]
-    )
-
-# ---------- /START ----------
-
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    users_col.update_one(
-        {"_id": update.effective_user.id},
-        {"$set": {"_id": update.effective_user.id}},
-        upsert=True
-    )
-
-    caption = (
-        "<code>WELCOME TO THE ADVANCED AUTO APPROVAL SYSTEM.\n"
-        "WITH THIS BOT, YOU CAN MANAGE JOIN REQUESTS AND\n"
-        "KEEP YOUR CHANNELS SECURE.</code>\n\n"
-        "<blockquote><b>➥ MAINTAINED BY : "
-        "<a href='https://t.me/Akuma_Rei_Kami'>Akuma_Rei</a>"
-        "</b></blockquote>"
-    )
-
-    await update.message.reply_photo(
+    await message.reply_photo(
         photo=PHOTO_MAIN,
         caption=caption,
-        reply_markup=start_keyboard(),
-        parse_mode=constants.ParseMode.HTML
+        reply_markup=buttons,
+        parse_mode=ParseMode.HTML,
+        quote=True
     )
+# ==================================================
 
-# ---------- CALLBACKS ----------
 
-async def handle_callbacks(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-
-    if query.data == "close_msg":
-        await query.message.delete()
-
-    elif query.data == "about":
-        await query.edit_message_media(
-            media=InputMediaPhoto(
-                media=PHOTO_ABOUT,
-                caption=(
-                    "<pre>BOT INFORMATION AND STATISTICS</pre>\n\n"
-                    "<blockquote><b>»» My Name :</b>"
-                    "<a href='https://t.me/MORVESSA_NIGHTMARE_BOT'>𝙈𝙊𝙍𝙑𝙀𝙎𝙎𝘼</a>\n"
-                    "<b>»» Developer :</b> @Akuma_Rei_Kami\n"
-                    "<b>»» Library :</b> Pyrogram v2\n"
-                    "<b>»» Language :</b> Python 3\n"
-                    "<b>»» Database :</b> MongoDB\n"
-                    "<b>»» Hosting :</b> Render</blockquote>"
-                ),
-                parse_mode=constants.ParseMode.HTML
-            ),
-            reply_markup=about_keyboard()
-        )
-
-    elif query.data == "back_to_start":
-        await start(update, context)
-
-# ---------- BAN / UNBAN ----------
-
-async def ban_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != OWNER_ID:
-        return
-    BAN_WAIT.add(update.effective_user.id)
-    await update.message.reply_text("send the user id")
-
-async def unban_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != OWNER_ID:
-        return
-    UNBAN_WAIT.add(update.effective_user.id)
-    await update.message.reply_text("send the user id")
-
-async def private_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message or not update.message.text:
-        return
-
-    uid = update.effective_user.id
-    text = update.message.text.strip()
-
-    if text.startswith("/"):
-        return
-
-    if uid in BAN_WAIT:
-        BAN_WAIT.remove(uid)
-        ban_col.insert_one({"_id": int(text)})
-        await update.message.reply_text(
-            "<blockquote>✨ Successfully Banned the user</blockquote>",
-            parse_mode=constants.ParseMode.HTML
-        )
-
-    elif uid in UNBAN_WAIT:
-        UNBAN_WAIT.remove(uid)
-        ban_col.delete_one({"_id": int(text)})
-        await update.message.reply_text(
-            "<blockquote>✨ Successfully Unbanned the user</blockquote>",
-            parse_mode=constants.ParseMode.HTML
-        )
-
-# ---------- RESTART BROADCAST ----------
-
-async def broadcast_restart(application: Application):
-    restart_id = uuid.uuid4().hex
-    restart_col.update_one(
-        {"_id": "last"},
-        {"$set": {"rid": restart_id}},
-        upsert=True
-    )
-
-    for user in users_col.find({}):
-        try:
-            await application.bot.send_photo(
-                chat_id=user["_id"],
-                photo=RESTART_PHOTO_ID,
-                caption="<blockquote>🔄 <code>Bot Restarted Successfully!</code></blockquote>",
-                parse_mode=constants.ParseMode.HTML
-            )
-        except RetryAfter as e:
-            await asyncio.sleep(e.retry_after)
-        except:
-            continue
-
-# ---------- MAIN ----------
-
-async def post_init(application: Application):
-    await broadcast_restart(application)
-
-def main():
-    Thread(target=run_flask).start()
-
-    application = (
-        Application.builder()
-        .token(BOT_TOKEN)
-        .post_init(post_init)
-        .build()
-    )
-
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("ban", ban_cmd))
-    application.add_handler(CommandHandler("unban", unban_cmd))
-    application.add_handler(CallbackQueryHandler(handle_callbacks))
-    application.add_handler(MessageHandler(filters.TEXT & filters.ChatType.PRIVATE, private_handler))
-
-    application.run_polling()
-
-if __name__ == "__main__":
-    main()
+bot.run()
