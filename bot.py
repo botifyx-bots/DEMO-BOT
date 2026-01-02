@@ -37,9 +37,10 @@ RESTART_PHOTO_ID = "AgACAgUAAxkBAAM7aVajLkigiY4oCHYNgkaVqUfEB9MAAhsLaxsxubhWFWCp
 
 # ---------- DATABASE ----------
 MONGO_URI = "mongodb+srv://ANI_OTAKU:ANI_OTAKU@cluster0.t3frstc.mongodb.net/?appName=Cluster0"
+DB_NAME = "ANI_OTAKU"
 
 mongo = MongoClient(MONGO_URI)
-db = mongo["bot_database"]
+db = mongo[DB_NAME]
 
 users_col = db["users"]
 restart_col = db["restart"]
@@ -287,11 +288,12 @@ def main():
     application.add_handler(CommandHandler("ban", ban_cmd))
     application.add_handler(CommandHandler("unban", unban_cmd))
     application.add_handler(CallbackQueryHandler(handle_callbacks))
-    application.add_handler(MessageHandler(filters.TEXT & filters.PRIVATE, private_handler))
+    application.add_handler(MessageHandler(filters.TEXT & filters.ChatType.PRIVATE, private_handler))
 
     print("Bot started successfully...")
     application.run_polling()
 
 if __name__ == "__main__":
     main()
+
 
