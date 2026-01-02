@@ -42,9 +42,9 @@ async def start_cmd(client, message):
 
     quote_text = (
         "<blockquote>"
-        "<code>WELCOME TO THE ADVANCED AUTO APPROVAL SYSTEM.\n"
+        "WELCOME TO THE ADVANCED AUTO APPROVAL SYSTEM.\n"
         "WITH THIS BOT, YOU CAN MANAGE JOIN REQUESTS AND\n"
-        "KEEP YOUR CHANNELS SECURE.</code>\n\n"
+        "KEEP YOUR CHANNELS SECURE.\n\n"
         "<b>➥ MAINTAINED BY : "
         "<a href='https://t.me/Akuma_Rei_Kami'>Akuma_Rei</a>"
         "</b>"
@@ -77,4 +77,5 @@ async def start_cmd(client, message):
 
 
 bot.run()
+
 
