@@ -3,6 +3,7 @@
 import logging
 import uuid
 import asyncio
+import os
 from threading import Thread
 from flask import Flask
 from pymongo import MongoClient
@@ -58,7 +59,7 @@ logging.basicConfig(
     level=logging.INFO
 )
 
-# ---------- FLASK WEB SERVER ----------
+# ---------- FLASK WEB SERVER (FIXED) ----------
 
 app = Flask(__name__)
 
@@ -67,7 +68,8 @@ def home():
     return "Bot is running!", 200
 
 def run_flask():
-    app.run(host="0.0.0.0")
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
 
 # ---------- HELPERS ----------
 
@@ -176,86 +178,10 @@ async def handle_callbacks(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=start_keyboard()
         )
 
-# ---------- BAN / UNBAN (OWNER + MODERATOR) ----------
-
-async def ban_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not has_permission(update.effective_user.id):
-        return
-    BAN_WAIT.add(update.effective_user.id)
-    await update.message.reply_text("send the user id")
-
-async def unban_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not has_permission(update.effective_user.id):
-        return
-    UNBAN_WAIT.add(update.effective_user.id)
-    await update.message.reply_text("send the user id")
-
-# ---------- MODERATOR SYSTEM (OWNER ONLY) ----------
-
-async def moderator_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_owner(update.effective_user.id):
-        return
-    MOD_WAIT.add(update.effective_user.id)
-    await update.message.reply_text("send the user id")
-
-async def revmoderator_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_owner(update.effective_user.id):
-        return
-    REVMOD_WAIT.add(update.effective_user.id)
-    await update.message.reply_text("send the user id")
-
-# ---------- PRIVATE HANDLER ----------
-
-async def private_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message or not update.message.text:
-        return
-
-    uid = update.effective_user.id
-    text = update.message.text.strip()
-
-    if text.startswith("/"):
-        return
-
-    if uid in BAN_WAIT:
-        BAN_WAIT.remove(uid)
-        ban_col.insert_one({"_id": int(text)})
-        await update.message.reply_text(
-            "<blockquote>✨ Successfully Banned the user</blockquote>",
-            parse_mode=constants.ParseMode.HTML
-        )
-
-    elif uid in UNBAN_WAIT:
-        UNBAN_WAIT.remove(uid)
-        ban_col.delete_one({"_id": int(text)})
-        await update.message.reply_text(
-            "<blockquote>✨ Successfully Unbanned the user</blockquote>",
-            parse_mode=constants.ParseMode.HTML
-        )
-
-    elif uid in MOD_WAIT:
-        MOD_WAIT.remove(uid)
-        mods_col.insert_one({"_id": int(text)})
-        await update.message.reply_text(
-            "<blockquote>👮 Successfully Added Moderator</blockquote>",
-            parse_mode=constants.ParseMode.HTML
-        )
-
-    elif uid in REVMOD_WAIT:
-        REVMOD_WAIT.remove(uid)
-        mods_col.delete_one({"_id": int(text)})
-        await update.message.reply_text(
-            "<blockquote>👮 Successfully Removed Moderator</blockquote>",
-            parse_mode=constants.ParseMode.HTML
-        )
-
 # ---------- RESTART BROADCAST ----------
 
 async def broadcast_restart(application: Application):
     restart_id = uuid.uuid4().hex
-
-    last = restart_col.find_one({"_id": "last"})
-    if last and last.get("rid") == restart_id:
-        return
 
     restart_col.update_one(
         {"_id": "last"},
@@ -301,7 +227,7 @@ async def post_init(application: Application):
     await broadcast_restart(application)
 
 def main():
-    Thread(target=run_flask).start()
+    Thread(target=run_flask, daemon=True).start()
 
     application = (
         Application.builder()
@@ -311,15 +237,9 @@ def main():
     )
 
     application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("ban", ban_cmd))
-    application.add_handler(CommandHandler("unban", unban_cmd))
-    application.add_handler(CommandHandler("moderator", moderator_cmd))
-    application.add_handler(CommandHandler("revmoderator", revmoderator_cmd))
     application.add_handler(CallbackQueryHandler(handle_callbacks))
-    application.add_handler(MessageHandler(filters.TEXT & filters.ChatType.PRIVATE, private_handler))
 
     application.run_polling()
 
 if __name__ == "__main__":
     main()
-
