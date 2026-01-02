@@ -32,6 +32,8 @@ PHOTO_MAIN = "AgACAgUAAxkBAAM1aVaegv6Pszyh9ZvpftAxw9GaPFcAAhQLaxsxubhWSyRRVjsF2A
 PHOTO_ABOUT = "AgACAgUAAxkBAAM5aVagPt-P0QYVBSF-iY8K_bB2C_IAAhgLaxsxubhW8ti1nJgvUJIACAEAAwIAA3kABx4E"
 RESTART_PHOTO_ID = "AgACAgUAAxkBAAM7aVajLkigiY4oCHYNgkaVqUfEB9MAAhsLaxsxubhWFWCpbMwqccwACAEAAwIAA3kABx4E"
 
+OWNER_ID = 7156099919
+
 # ---------- DATABASE ----------
 MONGO_URI = "mongodb+srv://ANI_OTAKU:ANI_OTAKU@cluster0.t3frstc.mongodb.net/?appName=Cluster0"
 DB_NAME = "ANI_OTAKU"
@@ -42,11 +44,12 @@ db = mongo[DB_NAME]
 users_col = db["users"]
 restart_col = db["restart"]
 ban_col = db["banned"]
-
-OWNER_ID = 7156099919
+mods_col = db["moderators"]
 
 BAN_WAIT = set()
 UNBAN_WAIT = set()
+MOD_WAIT = set()
+REVMOD_WAIT = set()
 
 # =========================================
 
@@ -68,8 +71,14 @@ def run_flask():
 
 # ---------- HELPERS ----------
 
-def is_banned(user_id: int) -> bool:
-    return ban_col.find_one({"_id": user_id}) is not None
+def is_owner(uid: int) -> bool:
+    return uid == OWNER_ID
+
+def is_moderator(uid: int) -> bool:
+    return mods_col.find_one({"_id": uid}) is not None
+
+def has_permission(uid: int) -> bool:
+    return is_owner(uid) or is_moderator(uid)
 
 # ---------- KEYBOARDS ----------
 
@@ -99,9 +108,6 @@ def about_keyboard():
 # ---------- /START ----------
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if is_banned(update.effective_user.id):
-        return
-
     users_col.update_one(
         {"_id": update.effective_user.id},
         {"$set": {"_id": update.effective_user.id}},
@@ -127,9 +133,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ---------- CALLBACK HANDLER ----------
 
 async def handle_callbacks(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if is_banned(update.effective_user.id):
-        return
-
     query = update.callback_query
     await query.answer()
 
@@ -173,19 +176,35 @@ async def handle_callbacks(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=start_keyboard()
         )
 
-# ---------- BAN / UNBAN ----------
+# ---------- BAN / UNBAN (OWNER + MODERATOR) ----------
 
 async def ban_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != OWNER_ID:
+    if not has_permission(update.effective_user.id):
         return
     BAN_WAIT.add(update.effective_user.id)
     await update.message.reply_text("send the user id")
 
 async def unban_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != OWNER_ID:
+    if not has_permission(update.effective_user.id):
         return
     UNBAN_WAIT.add(update.effective_user.id)
     await update.message.reply_text("send the user id")
+
+# ---------- MODERATOR SYSTEM (OWNER ONLY) ----------
+
+async def moderator_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_owner(update.effective_user.id):
+        return
+    MOD_WAIT.add(update.effective_user.id)
+    await update.message.reply_text("send the user id")
+
+async def revmoderator_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_owner(update.effective_user.id):
+        return
+    REVMOD_WAIT.add(update.effective_user.id)
+    await update.message.reply_text("send the user id")
+
+# ---------- PRIVATE HANDLER ----------
 
 async def private_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.message.text:
@@ -210,6 +229,22 @@ async def private_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ban_col.delete_one({"_id": int(text)})
         await update.message.reply_text(
             "<blockquote>✨ Successfully Unbanned the user</blockquote>",
+            parse_mode=constants.ParseMode.HTML
+        )
+
+    elif uid in MOD_WAIT:
+        MOD_WAIT.remove(uid)
+        mods_col.insert_one({"_id": int(text)})
+        await update.message.reply_text(
+            "<blockquote>👮 Successfully Added Moderator</blockquote>",
+            parse_mode=constants.ParseMode.HTML
+        )
+
+    elif uid in REVMOD_WAIT:
+        REVMOD_WAIT.remove(uid)
+        mods_col.delete_one({"_id": int(text)})
+        await update.message.reply_text(
+            "<blockquote>👮 Successfully Removed Moderator</blockquote>",
             parse_mode=constants.ParseMode.HTML
         )
 
@@ -278,6 +313,8 @@ def main():
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("ban", ban_cmd))
     application.add_handler(CommandHandler("unban", unban_cmd))
+    application.add_handler(CommandHandler("moderator", moderator_cmd))
+    application.add_handler(CommandHandler("revmoderator", revmoderator_cmd))
     application.add_handler(CallbackQueryHandler(handle_callbacks))
     application.add_handler(MessageHandler(filters.TEXT & filters.ChatType.PRIVATE, private_handler))
 
