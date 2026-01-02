@@ -66,6 +66,11 @@ def home():
 def run_flask():
     app.run(host="0.0.0.0")
 
+# ---------- HELPERS ----------
+
+def is_banned(user_id: int) -> bool:
+    return ban_col.find_one({"_id": user_id}) is not None
+
 # ---------- KEYBOARDS ----------
 
 def start_keyboard():
@@ -91,9 +96,12 @@ def about_keyboard():
         ]
     )
 
-# ---------- START (MESSAGE ONLY) ----------
+# ---------- /START ----------
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if is_banned(update.effective_user.id):
+        return
+
     users_col.update_one(
         {"_id": update.effective_user.id},
         {"$set": {"_id": update.effective_user.id}},
@@ -119,6 +127,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ---------- CALLBACK HANDLER ----------
 
 async def handle_callbacks(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if is_banned(update.effective_user.id):
+        return
+
     query = update.callback_query
     await query.answer()
 
@@ -226,12 +237,22 @@ async def broadcast_restart(application: Application):
         "</blockquote>"
     )
 
+    buttons = InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton("🆘 Support", url="https://t.me/BotifyX_support"),
+                InlineKeyboardButton("📢 Update Channel", url="https://t.me/BotifyX_Pro")
+            ]
+        ]
+    )
+
     for user in users_col.find({}):
         try:
             await application.bot.send_photo(
                 chat_id=user["_id"],
                 photo=RESTART_PHOTO_ID,
                 caption=caption,
+                reply_markup=buttons,
                 parse_mode=constants.ParseMode.HTML
             )
         except RetryAfter as e:
