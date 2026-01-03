@@ -493,10 +493,10 @@ async def private_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     uid = update.effective_user.id
-    text = update.message.text.strip() if update.message.text else ""
+    text = update.message.text.strip() if update.message.text else None
 
     # Ignore commands
-    if text.startswith("/"):
+    if text and text.startswith("/"):
         return
 
     # ---------- GENLINK PROCESS ----------
@@ -809,11 +809,13 @@ def main():
     application.add_handler(CommandHandler("help", help_cmd))
     application.add_handler(ChatJoinRequestHandler(auto_approve))
     application.add_handler(
-        MessageHandler(filters.ChatType.PRIVATE & ~filters.COMMAND, private_handler)
-    )
+    MessageHandler(filters.ChatType.PRIVATE & ~filters.COMMAND, private_handler)
+)
+
 
     application.run_polling()
 
 
 if __name__ == "__main__":
     main()
+
