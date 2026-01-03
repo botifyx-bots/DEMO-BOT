@@ -189,14 +189,17 @@ async def handle_callbacks(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
 
-if query.data == "check_fsub":
-    if not await is_user_joined(context.bot, query.from_user.id):
-        await query.answer("Join all channels first!", show_alert=True)
-        return
+    if query.data == "check_fsub":
+        if not await is_user_joined(context.bot, query.from_user.id):
+            await query.answer(
+                "Join all channels first!",
+                show_alert=True
+            )
+            return
 
-    await query.message.delete()
-    await start(update, context)
-    return
+        await query.message.delete()
+        await start(update, context)
+        return
 
 
     if query.data == "close_msg":
@@ -304,4 +307,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
