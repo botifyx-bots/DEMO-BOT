@@ -164,70 +164,97 @@ async def force_sub_message(update):
     )
 
 # ---------- START ----------
-
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if is_banned(update.effective_user.id):
+    uid = update.effective_user.id
+    chat_id = update.effective_chat.id
+
+    # save user first (IMPORTANT)
+    users_col.update_one(
+        {"_id": uid},
+        {"$set": {"_id": uid}},
+        upsert=True
+    )
+
+    # ban check
+    if is_banned(uid):
         return
 
-    if not await is_user_joined(context.bot, update.effective_user.id):
+    # force sub check
+    if not await is_user_joined(context.bot, uid):
         await force_sub_message(update)
         return
 
-    if context.args:
-        key = context.args[0]
+    key = context.args[0] if context.args else None
 
-        if key.startswith("BATCH_"):
-            batch = batch_col.find_one({"_id": key})
-            if batch:
-                sent = []
-                for mid in range(batch["from_id"], batch["to_id"] + 1):
-                    try:
-                        m = await context.bot.copy_message(
-                            update.effective_chat.id,
-                            batch["chat_id"],
-                            mid
-                        )
-                        sent.append(m.message_id)
-                    except:
-                        continue
+    # ---------- BATCH LINK ----------
+    if key and key.startswith("BATCH_"):
+        batch = batch_col.find_one({"_id": key})
+        if not batch:
+            return
 
-                d = get_auto_delete_seconds()
-                if d:
-                    alert = await context.bot.send_message(
-                        update.effective_chat.id,
-                        f"<blockquote>⏳ These messages will be deleted in {d//60} minute(s)</blockquote>",
-                        parse_mode=constants.ParseMode.HTML
-                    )
-                    context.job_queue.run_once(
-                        delete_messages,
-                        d,
-                        data={"chat_id": update.effective_chat.id, "msg_ids": sent, "alert_id": alert.message_id}
-                    )
-                return
+        sent_ids = []
 
+        for mid in range(batch["from_id"], batch["to_id"] + 1):
+            try:
+                m = await context.bot.copy_message(
+                    chat_id=chat_id,
+                    from_chat_id=batch["chat_id"],
+                    message_id=mid
+                )
+                sent_ids.append(m.message_id)
+            except:
+                continue
+
+        if not sent_ids:
+            return
+
+        d = get_auto_delete_seconds()
+        if d:
+            alert = await context.bot.send_message(
+                chat_id,
+                f"<blockquote>⏳ These messages will be deleted in {d // 60} minute(s)</blockquote>",
+                parse_mode=constants.ParseMode.HTML
+            )
+            context.job_queue.run_once(
+                delete_messages,
+                d,
+                data={
+                    "chat_id": chat_id,
+                    "msg_ids": sent_ids,
+                    "alert_id": alert.message_id
+                }
+            )
+        return
+
+    # ---------- SINGLE MESSAGE LINK ----------
+    if key:
         data = links_col.find_one({"_id": key})
         if data:
             m = await context.bot.copy_message(
-                update.effective_chat.id,
-                data["chat_id"],
-                data["message_id"]
+                chat_id=chat_id,
+                from_chat_id=data["chat_id"],
+                message_id=data["message_id"]
             )
+
             d = get_auto_delete_seconds()
             if d:
                 alert = await context.bot.send_message(
-                    update.effective_chat.id,
-                    f"<blockquote>⏳ This message will be deleted in {d//60} minute(s)</blockquote>",
+                    chat_id,
+                    f"<blockquote>⏳ This message will be deleted in {d // 60} minute(s)</blockquote>",
                     parse_mode=constants.ParseMode.HTML
                 )
                 context.job_queue.run_once(
                     delete_messages,
                     d,
-                    data={"chat_id": update.effective_chat.id, "msg_ids": [m.message_id], "alert_id": alert.message_id}
+                    data={
+                        "chat_id": chat_id,
+                        "msg_ids": [m.message_id],
+                        "alert_id": alert.message_id
+                    }
                 )
             return
 
-    users_col.update_one({"_id": update.effective_user.id}, {"$set": {"_id": update.effective_user.id}}, upsert=True)
-
+    # ---------- NORMAL START ----------
     await update.message.reply_photo(
         photo=PHOTO_MAIN,
         caption=(
@@ -241,6 +268,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=start_keyboard(),
         parse_mode=constants.ParseMode.HTML
     )
+
 # ---------- GENLINK ----------
 async def genlink_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if is_banned(update.effective_user.id):
@@ -847,6 +875,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
