@@ -545,20 +545,20 @@ async def handle_callbacks(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=start_keyboard()
         )
 # ---------- PRIVATE HANDLER ----------
-
 async def private_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if is_banned(update.effective_user.id):
         return
 
-    if not update.message or not update.message.text:
+    if not update.message:
         return
 
     uid = update.effective_user.id
-    text = update.message.text.strip()
+    text = update.message.text.strip() if update.message.text else ""
 
     if text.startswith("/"):
         return
 
+    # ---------- BAN ----------
     if uid in BAN_WAIT:
         BAN_WAIT.remove(uid)
         ban_col.insert_one({"_id": int(text)})
@@ -568,6 +568,7 @@ async def private_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
+    # ---------- UNBAN ----------
     if uid in UNBAN_WAIT:
         UNBAN_WAIT.remove(uid)
         ban_col.delete_one({"_id": int(text)})
@@ -577,6 +578,7 @@ async def private_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
+    # ---------- ADD MODERATOR ----------
     if uid in MOD_WAIT:
         MOD_WAIT.remove(uid)
         mods_col.insert_one({"_id": int(text)})
@@ -586,6 +588,7 @@ async def private_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
+    # ---------- REMOVE MODERATOR ----------
     if uid in REVMOD_WAIT:
         REVMOD_WAIT.remove(uid)
         mods_col.delete_one({"_id": int(text)})
@@ -594,77 +597,79 @@ async def private_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode=constants.ParseMode.HTML
         )
         return
-# ---------- GENLINK PROCESS ----------
-if uid in GENLINK_WAIT:
-    GENLINK_WAIT.remove(uid)
 
-    msg = update.message
-    key = uuid.uuid4().hex[:12]
+    # ---------- GENLINK PROCESS ----------
+    if uid in GENLINK_WAIT:
+        GENLINK_WAIT.remove(uid)
 
-    links_col.insert_one({
-        "_id": key,
-        "chat_id": msg.chat.id,
-        "message_id": msg.message_id
-    })
+        msg = update.message
+        key = uuid.uuid4().hex[:12]
 
-    link = f"https://t.me/ANI_UPLODE_BOT?start={key}"
-
-    keyboard = InlineKeyboardMarkup(
-        [[InlineKeyboardButton("🔗 Share", url=f"https://t.me/share/url?url={link}")]]
-    )
-
-    await update.message.reply_text(
-        f"Here is your link:\n\n{link}",
-        reply_markup=keyboard,
-        disable_web_page_preview=True
-    )
-    return
-# ---------- BATCH PROCESS ----------
-if uid in BATCH_WAIT:
-    data = BATCH_WAIT[uid]
-
-    if data["step"] == "first":
-        if not update.message.forward_from_chat:
-            return
-
-        data["chat_id"] = update.message.forward_from_chat.id
-        data["from_id"] = update.message.forward_from_message_id
-        data["step"] = "last"
-
-        await update.message.reply_text(
-            "<blockquote>Forward The Batch Last Message From Your Batch Channel (With Forward Tag)..</blockquote>",
-            parse_mode=constants.ParseMode.HTML
-        )
-        return
-
-    if data["step"] == "last":
-        if not update.message.forward_from_chat:
-            return
-
-        to_id = update.message.forward_from_message_id
-        batch_key = f"BATCH_{uuid.uuid4().hex[:12]}"
-
-        batch_col.insert_one({
-            "_id": batch_key,
-            "chat_id": data["chat_id"],
-            "from_id": data["from_id"],
-            "to_id": to_id
+        links_col.insert_one({
+            "_id": key,
+            "chat_id": msg.chat.id,
+            "message_id": msg.message_id
         })
 
-        del BATCH_WAIT[uid]
-
-        link = f"https://t.me/ANI_UPLODE_BOT?start={batch_key}"
+        link = f"https://t.me/ANI_UPLODE_BOT?start={key}"
 
         keyboard = InlineKeyboardMarkup(
             [[InlineKeyboardButton("🔗 Share", url=f"https://t.me/share/url?url={link}")]]
         )
 
-        await update.message.reply_text(
+        await msg.reply_text(
             f"Here is your link:\n\n{link}",
             reply_markup=keyboard,
             disable_web_page_preview=True
         )
         return
+
+    # ---------- BATCH PROCESS ----------
+    if uid in BATCH_WAIT:
+        data = BATCH_WAIT[uid]
+
+        if data["step"] == "first":
+            if not update.message.forward_from_chat:
+                return
+
+            data["chat_id"] = update.message.forward_from_chat.id
+            data["from_id"] = update.message.forward_from_message_id
+            data["step"] = "last"
+
+            await update.message.reply_text(
+                "<blockquote>Forward The Batch Last Message From Your Batch Channel (With Forward Tag)..</blockquote>",
+                parse_mode=constants.ParseMode.HTML
+            )
+            return
+
+        if data["step"] == "last":
+            if not update.message.forward_from_chat:
+                return
+
+            to_id = update.message.forward_from_message_id
+            batch_key = f"BATCH_{uuid.uuid4().hex[:12]}"
+
+            batch_col.insert_one({
+                "_id": batch_key,
+                "chat_id": data["chat_id"],
+                "from_id": data["from_id"],
+                "to_id": to_id
+            })
+
+            del BATCH_WAIT[uid]
+
+            link = f"https://t.me/ANI_UPLODE_BOT?start={batch_key}"
+
+            keyboard = InlineKeyboardMarkup(
+                [[InlineKeyboardButton("🔗 Share", url=f"https://t.me/share/url?url={link}")]]
+            )
+
+            await update.message.reply_text(
+                f"Here is your link:\n\n{link}",
+                reply_markup=keyboard,
+                disable_web_page_preview=True
+            )
+            return
 
 # ---------- RESTART BROADCAST ----------
 
@@ -746,6 +751,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
