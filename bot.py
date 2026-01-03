@@ -56,6 +56,7 @@ ban_col = db["banned"]
 mods_col = db["moderators"]
 links_col = db["links"]
 batch_col = db["batches"]
+settings_col = db["settings"]
 
 BAN_WAIT = set()
 UNBAN_WAIT = set()
@@ -137,6 +138,12 @@ def is_moderator(uid: int) -> bool:
 def has_permission(uid: int) -> bool:
     return is_owner(uid) or is_moderator(uid)
 
+def get_auto_delete_seconds():
+    data = settings_col.find_one({"_id": "auto_delete"})
+    if not data:
+        return None
+    return data["minutes"] * 60
+
 # ---------- KEYBOARDS ----------
 
 def start_keyboard():
@@ -163,7 +170,6 @@ def about_keyboard():
     )
 
 # ---------- /START ----------
-
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # 🔒 BAN CHECK
     if is_banned(update.effective_user.id):
@@ -174,7 +180,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await force_sub_message(update)
         return
 
-        # ---------- BATCH ----------
+    # 🔗 PAYLOAD HANDLING (/start <key>)
+    if context.args:
+        key = context.args[0]
+
+        # ---------- BATCH PAYLOAD ----------
         if key.startswith("BATCH_"):
             batch = batch_col.find_one({"_id": key})
             if batch:
@@ -188,9 +198,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     except:
                         continue
                 return
-       # 🔗 GENLINK PAYLOAD HANDLING (ADD HERE ⬇️)
-    if context.args:
-        key = context.args[0]
+
+        # ---------- GENLINK PAYLOAD ----------
         data = links_col.find_one({"_id": key})
         if data:
             await context.bot.copy_message(
@@ -199,7 +208,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 message_id=data["message_id"]
             )
             return
-# 👤 SAVE USER
+
+    # 👤 SAVE USER
     users_col.update_one(
         {"_id": update.effective_user.id},
         {"$set": {"_id": update.effective_user.id}},
@@ -223,6 +233,30 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         photo=PHOTO_MAIN,
         caption=caption,
         reply_markup=start_keyboard(),
+        parse_mode=constants.ParseMode.HTML
+    )
+
+# ---------- GENLINK ----------
+async def genlink_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if is_banned(update.effective_user.id):
+        return
+
+    GENLINK_WAIT.add(update.effective_user.id)
+
+    await update.message.reply_text(
+        "<blockquote>Send A Message For To Get Your Shareable Link</blockquote>",
+        parse_mode=constants.ParseMode.HTML
+    )
+
+# ---------- BATCH ----------
+async def batch_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if is_banned(update.effective_user.id):
+        return
+
+    BATCH_WAIT[update.effective_user.id] = {"step": "first"}
+
+    await update.message.reply_text(
+        "<blockquote>Forward The Batch First Message From your Batch Channel (With Forward Tag)..</blockquote>",
         parse_mode=constants.ParseMode.HTML
     )
 
@@ -286,6 +320,31 @@ async def auto_approve(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
     except:
         pass
+        
+# ---------- SET AUTO DELETE ----------
+async def setdel_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_owner(update.effective_user.id):
+        return
+
+    if not context.args or not context.args[0].isdigit():
+        await update.message.reply_text(
+            "<blockquote>Usage: /setdel &lt;minutes&gt;</blockquote>",
+            parse_mode=constants.ParseMode.HTML
+        )
+        return
+
+    minutes = int(context.args[0])
+
+    settings_col.update_one(
+        {"_id": "auto_delete"},
+        {"$set": {"minutes": minutes}},
+        upsert=True
+    )
+
+    await update.message.reply_text(
+        f"<blockquote>Auto delete time set to {minutes} minute(s)</blockquote>",
+        parse_mode=constants.ParseMode.HTML
+    )
 
 # ---------- HELP ----------
 async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -390,131 +449,6 @@ async def broadcast_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         report,
         parse_mode=constants.ParseMode.HTML
     )
-
-# ---------- GENLINK ----------
-async def genlink_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if is_banned(update.effective_user.id):
-        return
-
-    GENLINK_WAIT.add(update.effective_user.id)
-
-    await update.message.reply_text(
-        "<blockquote>Send A Message For To Get Your Shareable Link</blockquote>", parse_mode=constants.ParseMode.HTML)
-    
-# ---------- BATCH ----------
-async def batch_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if is_banned(update.effective_user.id):
-        return
-
-    BATCH_WAIT[update.effective_user.id] = {
-        "step": "first"
-    }
-
-    await update.message.reply_text(
-        "<blockquote>Forward The Batch First Message From your Batch Channel (With Forward Tag)..\n"
-        "or Give Me Batch First Message link from your batch channel</blockquote>", parse_mode=constants.ParseMode.HTML)
-    
-    
-    # ---------- GENLINK PROCESS ----------
-    if uid in GENLINK_WAIT:
-        GENLINK_WAIT.remove(uid)
-
-        msg = update.message
-
-        import uuid
-        key = uuid.uuid4().hex[:12]
-
-        links_col.insert_one({
-            "_id": key,
-            "chat_id": msg.chat.id,
-            "message_id": msg.message_id
-        })
-
-        link = f"https://t.me/ANI_UPLODE_BOT?start={key}"
-
-        share_url = (
-            "https://t.me/share/url?"
-            f"url={link}&text=Here%20is%20your%20file"
-        )
-
-        keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("🔗 Share", url=share_url)]
-        ])
-
-        await update.message.reply_text(
-            f"Here is your link:\n\n{link}",
-            reply_markup=keyboard,
-            disable_web_page_preview=True
-        )
-        return
-
-    # ---------- BATCH PROCESS ----------
-    if uid in BATCH_WAIT:
-        data = BATCH_WAIT[uid]
-
-        # ---------- FIRST MESSAGE ----------
-        if data["step"] == "first":
-            if update.message.forward_from_chat:
-                data["chat_id"] = update.message.forward_from_chat.id
-                data["from_id"] = update.message.forward_from_message_id
-            else:
-                # message link support
-                try:
-                    parts = text.split("/")
-                    data["chat_id"] = int("-100" + parts[-2])
-                    data["from_id"] = int(parts[-1])
-                except:
-                    await update.message.reply_text("Invalid first message")
-                    return
-
-            data["step"] = "last"
-
-            await update.message.reply_text(
-                "<blockquote>Forward The Batch Last Message From Your Batch Channel (With Forward Tag)..\n"
-                "or  Give Me Batch last message link from your batch channel</blockquote>", parse_mode=constants.ParseMode.HTML)
-            return
-
-        # ---------- LAST MESSAGE ----------
-        if data["step"] == "last":
-            if update.message.forward_from_chat:
-                to_id = update.message.forward_from_message_id
-            else:
-                try:
-                    to_id = int(text.split("/")[-1])
-                except:
-                    await update.message.reply_text("Invalid last message")
-                    return
-
-            batch_key = f"BATCH_{uuid.uuid4().hex[:12]}"
-
-            batch_col.insert_one({
-                "_id": batch_key,
-                "chat_id": data["chat_id"],
-                "from_id": data["from_id"],
-                "to_id": to_id
-            })
-
-            del BATCH_WAIT[uid]
-
-            link = f"https://t.me/ANI_UPLODE_BOT?start={batch_key}"
-
-            share_url = (
-                "https://t.me/share/url?"
-                f"url={link}&text=Batch%20Files"
-            )
-
-            keyboard = InlineKeyboardMarkup([
-                [InlineKeyboardButton("🔗 Share", url=share_url)]
-            ])
-
-            await update.message.reply_text(
-                f"Here is your link:\n\n{link}",
-                reply_markup=keyboard,
-                disable_web_page_preview=True
-            )
-            return
-
-
 
 # ---------- BAN / UNBAN ----------
 
@@ -660,6 +594,77 @@ async def private_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode=constants.ParseMode.HTML
         )
         return
+# ---------- GENLINK PROCESS ----------
+if uid in GENLINK_WAIT:
+    GENLINK_WAIT.remove(uid)
+
+    msg = update.message
+    key = uuid.uuid4().hex[:12]
+
+    links_col.insert_one({
+        "_id": key,
+        "chat_id": msg.chat.id,
+        "message_id": msg.message_id
+    })
+
+    link = f"https://t.me/ANI_UPLODE_BOT?start={key}"
+
+    keyboard = InlineKeyboardMarkup(
+        [[InlineKeyboardButton("🔗 Share", url=f"https://t.me/share/url?url={link}")]]
+    )
+
+    await update.message.reply_text(
+        f"Here is your link:\n\n{link}",
+        reply_markup=keyboard,
+        disable_web_page_preview=True
+    )
+    return
+# ---------- BATCH PROCESS ----------
+if uid in BATCH_WAIT:
+    data = BATCH_WAIT[uid]
+
+    if data["step"] == "first":
+        if not update.message.forward_from_chat:
+            return
+
+        data["chat_id"] = update.message.forward_from_chat.id
+        data["from_id"] = update.message.forward_from_message_id
+        data["step"] = "last"
+
+        await update.message.reply_text(
+            "<blockquote>Forward The Batch Last Message From Your Batch Channel (With Forward Tag)..</blockquote>",
+            parse_mode=constants.ParseMode.HTML
+        )
+        return
+
+    if data["step"] == "last":
+        if not update.message.forward_from_chat:
+            return
+
+        to_id = update.message.forward_from_message_id
+        batch_key = f"BATCH_{uuid.uuid4().hex[:12]}"
+
+        batch_col.insert_one({
+            "_id": batch_key,
+            "chat_id": data["chat_id"],
+            "from_id": data["from_id"],
+            "to_id": to_id
+        })
+
+        del BATCH_WAIT[uid]
+
+        link = f"https://t.me/ANI_UPLODE_BOT?start={batch_key}"
+
+        keyboard = InlineKeyboardMarkup(
+            [[InlineKeyboardButton("🔗 Share", url=f"https://t.me/share/url?url={link}")]]
+        )
+
+        await update.message.reply_text(
+            f"Here is your link:\n\n{link}",
+            reply_markup=keyboard,
+            disable_web_page_preview=True
+        )
+        return
 
 # ---------- RESTART BROADCAST ----------
 
@@ -727,6 +732,8 @@ def main():
     application.add_handler(CommandHandler("revmoderator", revmoderator_cmd))
     application.add_handler(CommandHandler("broadcast", broadcast_cmd))
     application.add_handler(CommandHandler("genlink", genlink_cmd))
+    application.add_handler(CommandHandler("batch", batch_cmd))
+    application.add_handler(CommandHandler("setdel", setdel_cmd))
     application.add_handler(CommandHandler("help", help_cmd))
     application.add_handler(ChatJoinRequestHandler(auto_approve))
 
@@ -739,6 +746,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
