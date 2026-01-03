@@ -744,13 +744,16 @@ def main():
 
 
     application.add_handler(
-        MessageHandler(filters.TEXT & filters.ChatType.PRIVATE, private_handler)
-    )
+    MessageHandler(filters.ChatType.PRIVATE & ~filters.COMMAND, private_handler)
+)
+
+
 
     application.run_polling()
 
 if __name__ == "__main__":
     main()
+
 
 
 
