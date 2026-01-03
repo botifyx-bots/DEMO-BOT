@@ -258,8 +258,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_photo(
         photo=PHOTO_MAIN,
         caption=(
-            "<blockquote>WELCOME TO THE ADVANCED AUTO APPROVAL SYSTEM.\n"
-            "WITH THIS BOT, YOU CAN MANAGE JOIN REQUESTS AND\n"
+            "<blockquote>WELCOME TO THE ADVANCED AUTO APPROVAL & FILE SHARE\n"
+            "SYSTEM. WITH THIS BOT, YOU CAN MANAGE JOIN REQUESTS AND\n"
+            "GET THE SHAREABLE LINK OF THE FILE U WANT TO SHARE AND\n"
             "KEEP YOUR CHANNELS SECURE.</blockquote>\n\n"
             "<blockquote><b>➥ MAINTAINED BY : "
             "<a href='https://t.me/Akuma_Rei_Kami'>Akuma_Rei</a>"
@@ -427,7 +428,11 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "➥ <b>/unban</b> — Unban a previously banned user (Admin)\n"
         "➥ <b>/moderator</b> — Add a moderator (Owner only)\n"
         "➥ <b>/revmoderator</b> — Remove a moderator (Owner only)\n"
-        "➥ <b>/help</b> — Show this help menu</blockquote>\n\n"
+        "➥ <b>/setdel</b> — To set auto delete time (Owner only)\n"
+        "➥ <b>/help</b> — Show this help menu\n\n"
+        "<b>THIS BOT CAN AUTO APPROVE YOUR JOIN REQUESTS\n"
+        "AND ADVANCE FILE SHARE BOT WITH BROADCAST AND AUTO\n"
+        "DELETE COMMANDS TO SUIT YOUR DEMANDS...</b></blockquote>\n\n"
         "<blockquote expandable><b>👑 Credits</b>\n"
         "This bot is developed and maintained by\n"
         "<b>@Akuma_Rei_Kami</b>\n\n"
@@ -768,9 +773,9 @@ async def handle_callbacks(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 caption=(
                     "<code>BOT INFORMATION AND STATISTICS</code>\n\n"
                     "<blockquote expandable><b>»» My Name :</b>"
-                    "<a href='https://t.me/Seris_auto_approval_bot'>𝐒𝐄𝐑𝐈𝐒</a>\n"
+                    "<a href='https://t.me/Seris_auto_approval_bot'>𝑹𝑬𝒁𝑬 «ρ𝘳𝓲ꪑꫀ»</a>\n"
                     "<b>»» Developer :</b> @Akuma_Rei_Kami\n"
-                    "<b>»» Library :</b> <a href='https://docs.pyrogram.org/'>Pyrogram v2</a>\n"
+                    "<b>»» Library :</b> <a href='https://docs.python-telegram-bot.org/'>PTB v22</a>\n"
                     "<b>»» Language :</b> <a href='https://www.python.org/'>Python 3</a>\n"
                     "<b>»» Database :</b> <a href='https://www.mongodb.com/docs/'>MongoDB</a>\n"
                     "<b>»» Hosting :</b> <a href='https://render.com/'>Render</a>"
@@ -788,12 +793,13 @@ async def handle_callbacks(update: Update, context: ContextTypes.DEFAULT_TYPE):
             media=InputMediaPhoto(
                 media=PHOTO_MAIN,
                 caption=(
-                    "<code>WELCOME TO THE ADVANCED AUTO APPROVAL SYSTEM.\n"
-                    "WITH THIS BOT, YOU CAN MANAGE JOIN REQUESTS AND\n"
-                    "KEEP YOUR CHANNELS SECURE.</code>\n\n"
-                    "<blockquote><b>➥ MAINTAINED BY : "
-                    "<a href='https://t.me/Akuma_Rei_Kami'>Akuma_Rei</a>"
-                    "</b></blockquote>"
+            "<blockquote>WELCOME TO THE ADVANCED AUTO APPROVAL & FILE SHARE\n"
+            "SYSTEM. WITH THIS BOT, YOU CAN MANAGE JOIN REQUESTS AND\n"
+            "GET THE SHAREABLE LINK OF THE FILE U WANT TO SHARE AND\n"
+            "KEEP YOUR CHANNELS SECURE.</blockquote>\n\n"
+            "<blockquote><b>➥ MAINTAINED BY : "
+            "<a href='https://t.me/Akuma_Rei_Kami'>Akuma_Rei</a>"
+            "</b></blockquote>"
                 ),
                 parse_mode=constants.ParseMode.HTML
             ),
@@ -875,6 +881,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
