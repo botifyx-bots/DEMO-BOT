@@ -3,4 +3,5 @@ tgcrypto
 flask
 pymongo
 dnspython
-python-telegram-bot
+python-telegram-bot[job-queue]
+
