@@ -123,6 +123,9 @@ async def force_sub_message(update):
 def is_owner(uid: int) -> bool:
     return uid == OWNER_ID
 
+def is_banned(uid: int) -> bool:
+    return ban_col.find_one({"_id": uid}) is not None
+
 def is_moderator(uid: int) -> bool:
     return mods_col.find_one({"_id": uid}) is not None
 
@@ -157,6 +160,8 @@ def about_keyboard():
 # ---------- /START ----------
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if is_banned(update.effective_user.id):
+        return
     if not await is_user_joined(context.bot, update.effective_user.id):
         await force_sub_message(update)
         return
@@ -218,6 +223,11 @@ async def revmoderator_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def handle_callbacks(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
+
+    if is_banned(query.from_user.id):
+        await query.answer("You are banned from using this bot.", show_alert=True)
+        return
+    query = update.callback_query
     await query.answer()
 
     if query.data == "check_fsub":
@@ -275,6 +285,9 @@ async def handle_callbacks(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ---------- PRIVATE HANDLER ----------
 
 async def private_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if is_banned(update.effective_user.id):
+        return
+
     if not update.message or not update.message.text:
         return
 
@@ -393,6 +406,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
