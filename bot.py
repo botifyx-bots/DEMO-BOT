@@ -28,14 +28,21 @@ from telegram import constants
 # ================= CONFIG =================
 
 BOT_TOKEN = "8495846696:AAHwUx4wktmUxtt4dpMJUff9tNPbyu6am4A"
-
 PHOTO_MAIN = "AgACAgUAAxkBAAM1aVaegv6Pszyh9ZvpftAxw9GaPFcAAhQLaxsxubhWSyRRVjsF2A8ACAEAAwIAA3kABx4E"
 PHOTO_ABOUT = "AgACAgUAAxkBAAM5aVagPt-P0QYVBSF-iY8K_bB2C_IAAhgLaxsxubhW8ti1nJgvUJIACAEAAwIAA3kABx4E"
 RESTART_PHOTO_ID = "AgACAgUAAxkBAAM7aVajLkigiY4oCHYNgkaVqUfEB9MAAhsLaxsxubhWFWCpbMwqccwACAEAAwIAA3kABx4E"
-
+FORCE_SUB_PHOTO = "AgACAgUAAxkBAAM9aVajnHmWrIUttpMzQRk7UfvoPswAAhwLaxsxubhWf70oZRL-qWoACAEAAwIAA3kABx4E"
 OWNER_ID = 7156099919
 
 # ---------- DATABASE ----------
+FORCE_SUB_CHANNELS = [
+    {"id": -1003538176254, "name": "Channel 1", "url": "https://t.me/BotifyX_Pro"},
+    {"id": -1002733246601, "name": "Channel 2", "url": "https://t.me/ANI_MARK_NET"},
+    {"id": -1002990773255, "name": "Channel 3", "url": "https://t.me/+tMr9UhqAWbxiMmRl"},
+    {"id": -1003497399888, "name": "Channel 4", "url": "https://t.me/+66nB-xbC3MpkZjY1"},
+    {"id": -1003117217377, "name": "Channel 5", "url": "https://t.me/NXTERA_INDEX"},
+    {"id": -1003038993740, "name": "Channel 6", "url": "https://t.me/Animez_Edits"}
+]
 MONGO_URI = "mongodb+srv://ANI_OTAKU:ANI_OTAKU@cluster0.t3frstc.mongodb.net/?appName=Cluster0"
 DB_NAME = "ANI_OTAKU"
 
@@ -71,6 +78,46 @@ def run_flask():
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
 
+# ---------- FORCE SUB HELPERS ----------
+
+async def is_user_joined(bot, user_id: int):
+    for ch in FORCE_SUB_CHANNELS:
+        try:
+            member = await bot.get_chat_member(ch["id"], user_id)
+            if member.status in ("left", "kicked"):
+                return False
+        except:
+            return False
+    return True
+
+def force_sub_keyboard():
+    buttons = []
+    row = []
+    for ch in FORCE_SUB_CHANNELS:
+        row.append(InlineKeyboardButton(ch["name"], url=ch["url"]))
+        if len(row) == 2:
+            buttons.append(row)
+            row = []
+    if row:
+        buttons.append(row)
+    buttons.append([InlineKeyboardButton("‼️ CHECK JOIN", callback_data="check_fsub")])
+    return InlineKeyboardMarkup(buttons)
+
+async def force_sub_message(update):
+    fsub_caption = (
+        f"<blockquote><b>◈ Hᴇʏ  {update.effective_user.mention_html()} ×\n"
+        "›› ʏᴏᴜʀ ғɪʟᴇ ɪs ʀᴇᴀᴅʏ ‼️  ʟᴏᴏᴋs ʟɪᴋᴇ ʏᴏᴜ ʜᴀᴠᴇɴ'ᴛ sᴜʙsᴄʀɪʙᴇᴅ "
+        "ᴛᴏ ᴏᴜʀ ᴄʜᴀɴɴᴇʟs ʏᴇᴛ, sᴜʙsᴄʀɪʙᴇ ɴᴏᴡ ᴛᴏ ɢᴇᴛ ʏᴏᴜʀ ғɪʟᴇs</b></blockquote>\n\n"
+        "<blockquote><b>›› Pᴏᴡᴇʀᴇᴅ ʙʏ : @BotifyX_Pro</b></blockquote>"
+    )
+
+    await update.message.reply_photo(
+        photo=FORCE_SUB_PHOTO,
+        caption=fsub_caption,
+        reply_markup=force_sub_keyboard(),
+        parse_mode=constants.ParseMode.HTML
+    )
+    
 # ---------- HELPERS ----------
 
 def is_owner(uid: int) -> bool:
@@ -110,6 +157,10 @@ def about_keyboard():
 # ---------- /START ----------
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await is_user_joined(context.bot, update.effective_user.id):
+        await force_sub_message(update)
+        return
+
     users_col.update_one(
         {"_id": update.effective_user.id},
         {"$set": {"_id": update.effective_user.id}},
@@ -137,6 +188,16 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_callbacks(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
+
+if query.data == "check_fsub":
+    if not await is_user_joined(context.bot, query.from_user.id):
+        await query.answer("Join all channels first!", show_alert=True)
+        return
+
+    await query.message.delete()
+    await start(update, context)
+    return
+
 
     if query.data == "close_msg":
         await query.message.delete()
@@ -189,7 +250,7 @@ async def broadcast_restart(application: Application):
         upsert=True
     )
 
-    caption = (
+    RE_caption = (
         "<blockquote>"
         "🔄 <b>Bot Restarted Successfully!\n\n"
         "✅ Updates have been applied.\n"
@@ -212,7 +273,7 @@ async def broadcast_restart(application: Application):
             await application.bot.send_photo(
                 chat_id=user["_id"],
                 photo=RESTART_PHOTO_ID,
-                caption=caption,
+                caption=RE_caption,
                 reply_markup=buttons,
                 parse_mode=constants.ParseMode.HTML
             )
@@ -243,3 +304,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
