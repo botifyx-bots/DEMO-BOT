@@ -183,6 +183,37 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode=constants.ParseMode.HTML
     )
 
+# ---------- BAN / UNBAN ----------
+
+async def ban_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not has_permission(update.effective_user.id):
+        return
+    BAN_WAIT.add(update.effective_user.id)
+    await update.message.reply_text("<blockquote>send the user id</blockquote>", parse_mode=constants.ParseMode.HTML)
+
+
+async def unban_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not has_permission(update.effective_user.id):
+        return
+    UNBAN_WAIT.add(update.effective_user.id)
+    await update.message.reply_text("<blockquote>send the user id</blockquote>", parse_mode=constants.ParseMode.HTML)
+
+
+# ---------- MODERATOR SYSTEM (OWNER ONLY) ----------
+
+async def moderator_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_owner(update.effective_user.id):
+        return
+    MOD_WAIT.add(update.effective_user.id)
+    await update.message.reply_text("<blockquote>send the user id</blockquote>", parse_mode=constants.ParseMode.HTML)
+
+
+async def revmoderator_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_owner(update.effective_user.id):
+        return
+    REVMOD_WAIT.add(update.effective_user.id)
+    await update.message.reply_text("<blockquote>send the user id</blockquote>", parse_mode=constants.ParseMode.HTML)
+
 # ---------- CALLBACK HANDLER ----------
 
 async def handle_callbacks(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -241,6 +272,53 @@ async def handle_callbacks(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ),
             reply_markup=start_keyboard()
         )
+# ---------- PRIVATE HANDLER ----------
+
+async def private_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.message or not update.message.text:
+        return
+
+    uid = update.effective_user.id
+    text = update.message.text.strip()
+
+    if text.startswith("/"):
+        return
+
+    if uid in BAN_WAIT:
+        BAN_WAIT.remove(uid)
+        ban_col.insert_one({"_id": int(text)})
+        await update.message.reply_text(
+            "<blockquote>✨ Successfully Banned the user</blockquote>",
+            parse_mode=constants.ParseMode.HTML
+        )
+        return
+
+    if uid in UNBAN_WAIT:
+        UNBAN_WAIT.remove(uid)
+        ban_col.delete_one({"_id": int(text)})
+        await update.message.reply_text(
+            "<blockquote>✨ Successfully Unbanned the user</blockquote>",
+            parse_mode=constants.ParseMode.HTML
+        )
+        return
+
+    if uid in MOD_WAIT:
+        MOD_WAIT.remove(uid)
+        mods_col.insert_one({"_id": int(text)})
+        await update.message.reply_text(
+            "<blockquote>👮 Successfully Added Moderator</blockquote>",
+            parse_mode=constants.ParseMode.HTML
+        )
+        return
+
+    if uid in REVMOD_WAIT:
+        REVMOD_WAIT.remove(uid)
+        mods_col.delete_one({"_id": int(text)})
+        await update.message.reply_text(
+            "<blockquote>👮 Successfully Removed Moderator</blockquote>",
+            parse_mode=constants.ParseMode.HTML
+        )
+        return
 
 # ---------- RESTART BROADCAST ----------
 
@@ -302,10 +380,19 @@ def main():
 
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CallbackQueryHandler(handle_callbacks))
+    application.add_handler(CommandHandler("ban", ban_cmd))
+    application.add_handler(CommandHandler("unban", unban_cmd))
+    application.add_handler(CommandHandler("moderator", moderator_cmd))
+    application.add_handler(CommandHandler("revmoderator", revmoderator_cmd))
+
+    application.add_handler(
+        MessageHandler(filters.TEXT & filters.ChatType.PRIVATE, private_handler)
+    )
 
     application.run_polling()
 
 if __name__ == "__main__":
     main()
+
 
 
