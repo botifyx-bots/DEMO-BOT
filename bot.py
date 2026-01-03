@@ -20,11 +20,12 @@ from telegram.ext import (
     CallbackQueryHandler,
     ContextTypes,
     MessageHandler,
-    filters
+    filters,
+    ChatJoinRequestHandler,
+    JobQueue
 )
 from telegram.error import RetryAfter
 from telegram import constants
-from telegram.ext import ChatJoinRequestHandler
 
 # ================= CONFIG =================
 
@@ -35,7 +36,6 @@ RESTART_PHOTO_ID = "AgACAgUAAxkBAAM7aVajLkigiY4oCHYNgkaVqUfEB9MAAhsLaxsxubhWFWCp
 FORCE_SUB_PHOTO = "AgACAgUAAxkBAAM9aVajnHmWrIUttpMzQRk7UfvoPswAAhwLaxsxubhWf70oZRL-qWoACAEAAwIAA3kABx4E"
 OWNER_ID = 7156099919
 
-# ---------- DATABASE ----------
 FORCE_SUB_CHANNELS = [
     {"id": -1003538176254, "name": "Channel 1", "url": "https://t.me/BotifyX_Pro"},
     {"id": -1002733246601, "name": "Channel 2", "url": "https://t.me/ANI_MARK_NET"},
@@ -44,6 +44,7 @@ FORCE_SUB_CHANNELS = [
     {"id": -1003117217377, "name": "Channel 5", "url": "https://t.me/NXTERA_INDEX"},
     {"id": -1003038993740, "name": "Channel 6", "url": "https://t.me/Animez_Edits"}
 ]
+
 MONGO_URI = "mongodb+srv://ANI_OTAKU:ANI_OTAKU@cluster0.t3frstc.mongodb.net/?appName=Cluster0"
 DB_NAME = "ANI_OTAKU"
 
@@ -65,15 +66,9 @@ REVMOD_WAIT = set()
 GENLINK_WAIT = set()
 BATCH_WAIT = {}
 
-# =========================================
+logging.basicConfig(level=logging.INFO)
 
-logging.basicConfig(
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    level=logging.INFO
-)
-
-# ---------- FLASK WEB SERVER (FIXED) ----------
-
+# ---------- FLASK ----------
 app = Flask(__name__)
 
 @app.route("/")
@@ -81,90 +76,34 @@ def home():
     return "Bot is running!", 200
 
 def run_flask():
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host="0.0.0.0", port=port)
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
 
-# ---------- FORCE SUB HELPERS ----------
-
-async def is_user_joined(bot, user_id: int):
-    for ch in FORCE_SUB_CHANNELS:
-        try:
-            member = await bot.get_chat_member(ch["id"], user_id)
-            if member.status in ("left", "kicked"):
-                return False
-        except:
-            return False
-    return True
-
-def force_sub_keyboard():
-    buttons = []
-    row = []
-    for ch in FORCE_SUB_CHANNELS:
-        row.append(InlineKeyboardButton(ch["name"], url=ch["url"]))
-        if len(row) == 2:
-            buttons.append(row)
-            row = []
-    if row:
-        buttons.append(row)
-    buttons.append([InlineKeyboardButton("‼️ CHECK JOIN", callback_data="check_fsub")])
-    return InlineKeyboardMarkup(buttons)
-
-async def force_sub_message(update):
-    fsub_caption = (
-        f"<blockquote><b>◈ Hᴇʏ  {update.effective_user.mention_html()} ×\n"
-        "›› ʏᴏᴜʀ ғɪʟᴇ ɪs ʀᴇᴀᴅʏ ‼️  ʟᴏᴏᴋs ʟɪᴋᴇ ʏᴏᴜ ʜᴀᴠᴇɴ'ᴛ sᴜʙsᴄʀɪʙᴇᴅ "
-        "ᴛᴏ ᴏᴜʀ ᴄʜᴀɴɴᴇʟs ʏᴇᴛ, sᴜʙsᴄʀɪʙᴇ ɴᴏᴡ ᴛᴏ ɢᴇᴛ ʏᴏᴜʀ ғɪʟᴇs</b></blockquote>\n\n"
-        "<blockquote><b>›› Pᴏᴡᴇʀᴇᴅ ʙʏ : @BotifyX_Pro</b></blockquote>"
-    )
-
-    await update.message.reply_photo(
-        photo=FORCE_SUB_PHOTO,
-        caption=fsub_caption,
-        reply_markup=force_sub_keyboard(),
-        parse_mode=constants.ParseMode.HTML
-    )
-    
 # ---------- HELPERS ----------
 
-def is_owner(uid: int) -> bool:
-    return uid == OWNER_ID
-
-def is_banned(uid: int) -> bool:
-    return ban_col.find_one({"_id": uid}) is not None
-
-def is_moderator(uid: int) -> bool:
-    return mods_col.find_one({"_id": uid}) is not None
-
-def has_permission(uid: int) -> bool:
-    return is_owner(uid) or is_moderator(uid)
+def is_owner(uid): return uid == OWNER_ID
+def is_banned(uid): return ban_col.find_one({"_id": uid}) is not None
+def is_moderator(uid): return mods_col.find_one({"_id": uid}) is not None
+def has_permission(uid): return is_owner(uid) or is_moderator(uid)
 
 def get_auto_delete_seconds():
     data = settings_col.find_one({"_id": "auto_delete"})
-    if not data:
-        return None
-    return data["minutes"] * 60
-# ---------- AUTO DELETE WORKER ----------
+    return data["minutes"] * 60 if data else None
+
+# ---------- AUTO DELETE ----------
+
 async def delete_messages(context: ContextTypes.DEFAULT_TYPE):
     data = context.job.data
-
-    chat_id = data["chat_id"]
-    msg_ids = data.get("msg_ids", [])
-    alert_id = data.get("alert_id")
-
-    for mid in msg_ids:
+    for mid in data["msg_ids"]:
         try:
-            await context.bot.delete_message(chat_id, mid)
+            await context.bot.delete_message(data["chat_id"], mid)
         except:
             pass
-
-    if alert_id:
+    if data.get("alert_id"):
         try:
-            await context.bot.delete_message(chat_id, alert_id)
+            await context.bot.delete_message(data["chat_id"], data["alert_id"])
         except:
             pass
-
 # ---------- KEYBOARDS ----------
-
 def start_keyboard():
     return InlineKeyboardMarkup(
         [
@@ -188,116 +127,120 @@ def about_keyboard():
         ]
     )
 
-# ---------- /START ----------
+# ---------- FORCE SUB ----------
+
+async def is_user_joined(bot, user_id):
+    for ch in FORCE_SUB_CHANNELS:
+        try:
+            m = await bot.get_chat_member(ch["id"], user_id)
+            if m.status in ("left", "kicked"):
+                return False
+        except:
+            return False
+    return True
+
+def force_sub_keyboard():
+    rows, row = [], []
+    for ch in FORCE_SUB_CHANNELS:
+        row.append(InlineKeyboardButton(ch["name"], url=ch["url"]))
+        if len(row) == 2:
+            rows.append(row)
+            row = []
+    if row: rows.append(row)
+    rows.append([InlineKeyboardButton("‼️ CHECK JOIN", callback_data="check_fsub")])
+    return InlineKeyboardMarkup(rows)
+
+async def force_sub_message(update):
+    await update.message.reply_photo(
+        photo=FORCE_SUB_PHOTO,
+        caption=(
+            f"<blockquote><b>◈ Hᴇʏ  {update.effective_user.mention_html()} ×\n"
+            "›› ʏᴏᴜʀ ғɪʟᴇ ɪs ʀᴇᴀᴅʏ ‼️  ʟᴏᴏᴋs ʟɪᴋᴇ ʏᴏᴜ ʜᴀᴠᴇɴ'ᴛ sᴜʙsᴄʀɪʙᴇᴅ "
+            "ᴛᴏ ᴏᴜʀ ᴄʜᴀɴɴᴇʟs ʏᴇᴛ, sᴜʙsᴄʀɪʙᴇ ɴᴏᴡ ᴛᴏ ɢᴇᴛ ʏᴏᴜʀ ғɪʟᴇs</b></blockquote>\n\n"
+            "<blockquote><b>›› Pᴏᴡᴇʀᴇᴅ ʙʏ : @BotifyX_Pro</b></blockquote>"
+        ),
+        reply_markup=force_sub_keyboard(),
+        parse_mode=constants.ParseMode.HTML
+    )
+
+# ---------- START ----------
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # 🔒 BAN CHECK
     if is_banned(update.effective_user.id):
         return
 
-    # 🔒 FORCE SUB CHECK
     if not await is_user_joined(context.bot, update.effective_user.id):
         await force_sub_message(update)
         return
 
-    # 🔗 PAYLOAD HANDLING (/start <key>)
     if context.args:
         key = context.args[0]
 
-        # ---------- BATCH PAYLOAD ----------
         if key.startswith("BATCH_"):
             batch = batch_col.find_one({"_id": key})
             if batch:
-                sent_ids = []
-
+                sent = []
                 for mid in range(batch["from_id"], batch["to_id"] + 1):
                     try:
-                        await context.bot.copy_message(
-                            chat_id=update.effective_chat.id,
-                            from_chat_id=batch["chat_id"],
-                            message_id=mid
+                        m = await context.bot.copy_message(
+                            update.effective_chat.id,
+                            batch["chat_id"],
+                            mid
                         )
-                        # PTB v22: track via last_message_id
-                        sent_ids.append(update.effective_chat.last_message_id)
+                        sent.append(m.message_id)
                     except:
                         continue
 
-                delete_after = get_auto_delete_seconds()
-                if delete_after:
+                d = get_auto_delete_seconds()
+                if d:
                     alert = await context.bot.send_message(
-                        chat_id=update.effective_chat.id,
-                        text=f"<blockquote>⏳ These messages will be deleted in {delete_after//60} minute(s)</blockquote>",
+                        update.effective_chat.id,
+                        f"<blockquote>⏳ These messages will be deleted in {d//60} minute(s)</blockquote>",
                         parse_mode=constants.ParseMode.HTML
                     )
-
                     context.job_queue.run_once(
                         delete_messages,
-                        when=delete_after,
-                        data={
-                            "chat_id": update.effective_chat.id,
-                            "msg_ids": sent_ids,
-                            "alert_id": alert.message_id
-                        }
+                        d,
+                        data={"chat_id": update.effective_chat.id, "msg_ids": sent, "alert_id": alert.message_id}
                     )
-
                 return
 
-        # ---------- GENLINK PAYLOAD ----------
         data = links_col.find_one({"_id": key})
         if data:
-            await context.bot.copy_message(
-                chat_id=update.effective_chat.id,
-                from_chat_id=data["chat_id"],
-                message_id=data["message_id"]
+            m = await context.bot.copy_message(
+                update.effective_chat.id,
+                data["chat_id"],
+                data["message_id"]
             )
-
-            sent_id = update.effective_chat.last_message_id
-
-            delete_after = get_auto_delete_seconds()
-            if delete_after:
+            d = get_auto_delete_seconds()
+            if d:
                 alert = await context.bot.send_message(
-                    chat_id=update.effective_chat.id,
-                    text=f"<blockquote>⏳ This message will be deleted in {delete_after//60} minute(s)</blockquote>",
+                    update.effective_chat.id,
+                    f"<blockquote>⏳ This message will be deleted in {d//60} minute(s)</blockquote>",
                     parse_mode=constants.ParseMode.HTML
                 )
-
                 context.job_queue.run_once(
                     delete_messages,
-                    when=delete_after,
-                    data={
-                        "chat_id": update.effective_chat.id,
-                        "msg_ids": [sent_id],
-                        "alert_id": alert.message_id
-                    }
+                    d,
+                    data={"chat_id": update.effective_chat.id, "msg_ids": [m.message_id], "alert_id": alert.message_id}
                 )
-
             return
 
-    # 👤 SAVE USER
-    users_col.update_one(
-        {"_id": update.effective_user.id},
-        {"$set": {"_id": update.effective_user.id}},
-        upsert=True
-    )
-
-    # 👋 NORMAL START MESSAGE CONTINUES BELOW
-    # (your existing start UI code)
-
-    caption = (
-        "<blockquote>WELCOME TO THE ADVANCED AUTO APPROVAL SYSTEM.\n"
-        "WITH THIS BOT, YOU CAN MANAGE JOIN REQUESTS AND\n"
-        "KEEP YOUR CHANNELS SECURE.</blockquote>\n\n"
-        "<blockquote><b>➥ MAINTAINED BY : "
-        "<a href='https://t.me/Akuma_Rei_Kami'>Akuma_Rei</a>"
-        "</b></blockquote>"
-    )
+    users_col.update_one({"_id": update.effective_user.id}, {"$set": {"_id": update.effective_user.id}}, upsert=True)
 
     await update.message.reply_photo(
         photo=PHOTO_MAIN,
-        caption=caption,
+        caption=(
+            "<blockquote>WELCOME TO THE ADVANCED AUTO APPROVAL SYSTEM.\n"
+            "WITH THIS BOT, YOU CAN MANAGE JOIN REQUESTS AND\n"
+            "KEEP YOUR CHANNELS SECURE.</blockquote>\n\n"
+            "<blockquote><b>➥ MAINTAINED BY : "
+            "<a href='https://t.me/Akuma_Rei_Kami'>Akuma_Rei</a>"
+            "</b></blockquote>"
+        ),
         reply_markup=start_keyboard(),
         parse_mode=constants.ParseMode.HTML
     )
-
 # ---------- GENLINK ----------
 async def genlink_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if is_banned(update.effective_user.id):
@@ -309,6 +252,7 @@ async def genlink_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "<blockquote>Send A Message For To Get Your Shareable Link</blockquote>",
         parse_mode=constants.ParseMode.HTML
     )
+
 
 # ---------- BATCH ----------
 async def batch_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -322,16 +266,53 @@ async def batch_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode=constants.ParseMode.HTML
     )
 
+async def ban_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not has_permission(update.effective_user.id):
+        return
+    BAN_WAIT.add(update.effective_user.id)
+    await update.message.reply_text(
+        "<blockquote>send the user id</blockquote>",
+        parse_mode=constants.ParseMode.HTML
+    )
+
+
+async def unban_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not has_permission(update.effective_user.id):
+        return
+    UNBAN_WAIT.add(update.effective_user.id)
+    await update.message.reply_text(
+        "<blockquote>send the user id</blockquote>",
+        parse_mode=constants.ParseMode.HTML
+    )
+
+
+async def moderator_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_owner(update.effective_user.id):
+        return
+    MOD_WAIT.add(update.effective_user.id)
+    await update.message.reply_text(
+        "<blockquote>send the user id</blockquote>",
+        parse_mode=constants.ParseMode.HTML
+    )
+
+
+async def revmoderator_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_owner(update.effective_user.id):
+        return
+    REVMOD_WAIT.add(update.effective_user.id)
+    await update.message.reply_text(
+        "<blockquote>send the user id</blockquote>",
+        parse_mode=constants.ParseMode.HTML
+    )
+
 # ---------- AUTO APPROVAL WITH FORCE-SUB ----------
 async def auto_approve(update: Update, context: ContextTypes.DEFAULT_TYPE):
     join = update.chat_join_request
     user = join.from_user
     chat = join.chat
 
-    # 🔒 FORCE-SUB CHECK (REUSE EXISTING LOGIC)
     if not await is_user_joined(context.bot, user.id):
         try:
-            # reuse SAME force-sub UI
             await context.bot.send_photo(
                 chat_id=user.id,
                 photo=FORCE_SUB_PHOTO,
@@ -346,15 +327,10 @@ async def auto_approve(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         except:
             pass
-        return  # ❌ DO NOT APPROVE
+        return
 
-    # ✅ APPROVE ONLY AFTER FORCE-SUB
-    await context.bot.approve_chat_join_request(
-        chat_id=chat.id,
-        user_id=user.id
-    )
+    await context.bot.approve_chat_join_request(chat.id, user.id)
 
-    # ✅ APPROVAL MESSAGE (YOUR FORMAT)
     approval_caption = (
         f"<blockquote>◈ Hᴇʏ {user.mention_html()} ×\n\n"
         f"›› ʏᴏᴜʀ ʀᴇǫᴜᴇsᴛ ᴛᴏ ᴊᴏɪɴ {chat.title} "
@@ -364,12 +340,10 @@ async def auto_approve(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
     buttons = InlineKeyboardMarkup(
-        [
-            [
-                InlineKeyboardButton("🆘 Support", url="https://t.me/BotifyX_support"),
-                InlineKeyboardButton("👨‍💻 Developer", url="https://t.me/Akuma_Rei_Kami")
-            ]
-        ]
+        [[
+            InlineKeyboardButton("🆘 Support", url="https://t.me/BotifyX_support"),
+            InlineKeyboardButton("👨‍💻 Developer", url="https://t.me/Akuma_Rei_Kami")
+        ]]
     )
 
     try:
@@ -382,7 +356,8 @@ async def auto_approve(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
     except:
         pass
-        
+
+
 # ---------- SET AUTO DELETE ----------
 async def setdel_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_owner(update.effective_user.id):
@@ -396,7 +371,6 @@ async def setdel_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     minutes = int(context.args[0])
-
     settings_col.update_one(
         {"_id": "auto_delete"},
         {"$set": {"minutes": minutes}},
@@ -407,6 +381,7 @@ async def setdel_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"<blockquote>Auto delete time set to {minutes} minute(s)</blockquote>",
         parse_mode=constants.ParseMode.HTML
     )
+
 
 # ---------- HELP ----------
 async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -437,16 +412,14 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
     buttons = InlineKeyboardMarkup(
+        [[
+            InlineKeyboardButton("🆘 Support", url="https://t.me/BotifyX_support"),
+            InlineKeyboardButton("📢 Update Channel", url="https://t.me/BotifyX_Pro")
+        ],
         [
-            [
-                InlineKeyboardButton("🆘 Support", url="https://t.me/BotifyX_support"),
-                InlineKeyboardButton("📢 Update Channel", url="https://t.me/BotifyX_Pro")
-            ],
-            [
-                InlineKeyboardButton("👨‍💻 Developer", url="https://t.me/Akuma_Rei_Kami"),
-                InlineKeyboardButton("➥ CLOSE", callback_data="close_msg")
-            ]
-        ]
+            InlineKeyboardButton("👨‍💻 Developer", url="https://t.me/Akuma_Rei_Kami"),
+            InlineKeyboardButton("➥ CLOSE", callback_data="close_msg")
+        ]]
     )
 
     await update.message.reply_photo(
@@ -455,7 +428,6 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=buttons,
         parse_mode=constants.ParseMode.HTML
     )
-    
 # ---------- BROADCAST (REPLY MODE) ----------
 async def broadcast_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_owner(update.effective_user.id):
@@ -511,103 +483,9 @@ async def broadcast_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         report,
         parse_mode=constants.ParseMode.HTML
     )
-
-# ---------- BAN / UNBAN ----------
-
-async def ban_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not has_permission(update.effective_user.id):
-        return
-    BAN_WAIT.add(update.effective_user.id)
-    await update.message.reply_text("<blockquote>send the user id</blockquote>", parse_mode=constants.ParseMode.HTML)
-
-
-async def unban_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not has_permission(update.effective_user.id):
-        return
-    UNBAN_WAIT.add(update.effective_user.id)
-    await update.message.reply_text("<blockquote>send the user id</blockquote>", parse_mode=constants.ParseMode.HTML)
-
-
-# ---------- MODERATOR SYSTEM (OWNER ONLY) ----------
-
-async def moderator_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_owner(update.effective_user.id):
-        return
-    MOD_WAIT.add(update.effective_user.id)
-    await update.message.reply_text("<blockquote>send the user id</blockquote>", parse_mode=constants.ParseMode.HTML)
-
-
-async def revmoderator_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_owner(update.effective_user.id):
-        return
-    REVMOD_WAIT.add(update.effective_user.id)
-    await update.message.reply_text("<blockquote>send the user id</blockquote>", parse_mode=constants.ParseMode.HTML)
-
-# ---------- CALLBACK HANDLER ----------
-
-async def handle_callbacks(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-
-    if is_banned(query.from_user.id):
-        await query.answer("You are banned from using this bot.", show_alert=True)
-        return
-    query = update.callback_query
-    await query.answer()
-
-    if query.data == "check_fsub":
-        if not await is_user_joined(context.bot, query.from_user.id):
-            await query.answer(
-                "Join all channels first!",
-                show_alert=True
-            )
-            return
-
-        await query.message.delete()
-        await start(update, context)
-        return
-
-
-    if query.data == "close_msg":
-        await query.message.delete()
-
-    elif query.data == "about":
-        await query.edit_message_media(
-            media=InputMediaPhoto(
-                media=PHOTO_ABOUT,
-                caption=(
-                    "<code>BOT INFORMATION AND STATISTICS</code>\n\n"
-                    "<blockquote expandable><b>»» My Name :</b>"
-                    "<a href='https://t.me/Seris_auto_approval_bot'>𝐒𝐄𝐑𝐈𝐒</a>\n"
-                    "<b>»» Developer :</b> @Akuma_Rei_Kami\n"
-                    "<b>»» Library :</b> <a href='https://docs.pyrogram.org/'>Pyrogram v2</a>\n"
-                    "<b>»» Language :</b> <a href='https://www.python.org/'>Python 3</a>\n"
-                    "<b>»» Database :</b> <a href='https://www.mongodb.com/docs/'>MongoDB</a>\n"
-                    "<b>»» Hosting :</b> <a href='https://render.com/'>Render</a>"
-                    "</blockquote>"
-                ),
-                parse_mode=constants.ParseMode.HTML
-            ),
-            reply_markup=about_keyboard()
-        )
-
-    elif query.data == "back_to_start":
-        await query.edit_message_media(
-            media=InputMediaPhoto(
-                media=PHOTO_MAIN,
-                caption=(
-                    "<code>WELCOME TO THE ADVANCED AUTO APPROVAL SYSTEM.\n"
-                    "WITH THIS BOT, YOU CAN MANAGE JOIN REQUESTS AND\n"
-                    "KEEP YOUR CHANNELS SECURE.</code>\n\n"
-                    "<blockquote><b>➥ MAINTAINED BY : "
-                    "<a href='https://t.me/Akuma_Rei_Kami'>Akuma_Rei</a>"
-                    "</b></blockquote>"
-                ),
-                parse_mode=constants.ParseMode.HTML
-            ),
-            reply_markup=start_keyboard()
-        )
 # ---------- PRIVATE HANDLER ----------
 async def private_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # BAN CHECK
     if is_banned(update.effective_user.id):
         return
 
@@ -617,6 +495,7 @@ async def private_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     text = update.message.text.strip() if update.message.text else ""
 
+    # Ignore commands
     if text.startswith("/"):
         return
 
@@ -650,25 +529,21 @@ async def private_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if uid in BATCH_WAIT:
         data = BATCH_WAIT[uid]
 
-        # ---------- FIRST MESSAGE ----------
+        # ----- FIRST MESSAGE -----
         if data["step"] == "first":
 
-            # ✅ accept forwarded message OR message link
+            # Forwarded message
             if update.message.forward_from_chat:
                 data["chat_id"] = update.message.forward_from_chat.id
                 data["from_id"] = update.message.forward_from_message_id
 
-            elif update.message.entities:
-                for ent in update.message.entities:
-                    if ent.type == "url":
-                        try:
-                            parts = update.message.text.split("/")
-                            data["chat_id"] = int("-100" + parts[-2])
-                            data["from_id"] = int(parts[-1])
-                        except:
-                            return
-                        break
-                else:
+            # Message link
+            elif "t.me/c/" in text:
+                try:
+                    parts = text.split("/")
+                    data["chat_id"] = int("-100" + parts[-2])
+                    data["from_id"] = int(parts[-1])
+                except:
                     return
             else:
                 return
@@ -681,24 +556,24 @@ async def private_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
 
-        # ---------- LAST MESSAGE ----------
+        # ----- LAST MESSAGE -----
         if data["step"] == "last":
 
+            # Forwarded message
             if update.message.forward_from_chat:
                 to_id = update.message.forward_from_message_id
 
-            elif update.message.entities:
-                for ent in update.message.entities:
-                    if ent.type == "url":
-                        try:
-                            parts = update.message.text.split("/")
-                            to_id = int(parts[-1])
-                        except:
-                            return
-                        break
-                else:
+            # Message link
+            elif "t.me/c/" in text:
+                try:
+                    to_id = int(text.split("/")[-1])
+                except:
                     return
             else:
+                return
+
+            # Safety check
+            if to_id < data["from_id"]:
                 return
 
             batch_key = f"BATCH_{uuid.uuid4().hex[:12]}"
@@ -728,7 +603,16 @@ async def private_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # ---------- BAN ----------
     if uid in BAN_WAIT:
         BAN_WAIT.remove(uid)
-        ban_col.insert_one({"_id": int(text)})
+
+        if not text.isdigit():
+            return
+
+        ban_col.update_one(
+            {"_id": int(text)},
+            {"$set": {"_id": int(text)}},
+            upsert=True
+        )
+
         await update.message.reply_text(
             "<blockquote>✨ Successfully Banned the user</blockquote>",
             parse_mode=constants.ParseMode.HTML
@@ -738,7 +622,12 @@ async def private_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # ---------- UNBAN ----------
     if uid in UNBAN_WAIT:
         UNBAN_WAIT.remove(uid)
+
+        if not text.isdigit():
+            return
+
         ban_col.delete_one({"_id": int(text)})
+
         await update.message.reply_text(
             "<blockquote>✨ Successfully Unbanned the user</blockquote>",
             parse_mode=constants.ParseMode.HTML
@@ -748,7 +637,16 @@ async def private_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # ---------- ADD MODERATOR ----------
     if uid in MOD_WAIT:
         MOD_WAIT.remove(uid)
-        mods_col.insert_one({"_id": int(text)})
+
+        if not text.isdigit():
+            return
+
+        mods_col.update_one(
+            {"_id": int(text)},
+            {"$set": {"_id": int(text)}},
+            upsert=True
+        )
+
         await update.message.reply_text(
             "<blockquote>👮 Successfully Added Moderator</blockquote>",
             parse_mode=constants.ParseMode.HTML
@@ -758,28 +656,99 @@ async def private_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # ---------- REMOVE MODERATOR ----------
     if uid in REVMOD_WAIT:
         REVMOD_WAIT.remove(uid)
+
+        if not text.isdigit():
+            return
+
         mods_col.delete_one({"_id": int(text)})
+
         await update.message.reply_text(
             "<blockquote>👮 Successfully Removed Moderator</blockquote>",
             parse_mode=constants.ParseMode.HTML
         )
         return
+# ---------- CALLBACK HANDLER ----------
+async def handle_callbacks(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
 
-# ---------- RESTART BROADCAST ----------
+    # BAN CHECK
+    if is_banned(query.from_user.id):
+        await query.answer("You are banned from using this bot.", show_alert=True)
+        return
 
+    await query.answer()
+
+    # ---------- FORCE SUB CHECK ----------
+    if query.data == "check_fsub":
+        if not await is_user_joined(context.bot, query.from_user.id):
+            await query.answer(
+                "Join all channels first!",
+                show_alert=True
+            )
+            return
+
+        try:
+            await query.message.delete()
+        except:
+            pass
+
+        await start(update, context)
+        return
+
+    # ---------- CLOSE ----------
+    if query.data == "close_msg":
+        try:
+            await query.message.delete()
+        except:
+            pass
+        return
+
+    # ---------- ABOUT ----------
+    if query.data == "about":
+        await query.edit_message_media(
+            media=InputMediaPhoto(
+                media=PHOTO_ABOUT,
+                caption=(
+                    "<code>BOT INFORMATION AND STATISTICS</code>\n\n"
+                    "<blockquote expandable><b>»» My Name :</b>"
+                    "<a href='https://t.me/Seris_auto_approval_bot'>𝐒𝐄𝐑𝐈𝐒</a>\n"
+                    "<b>»» Developer :</b> @Akuma_Rei_Kami\n"
+                    "<b>»» Library :</b> <a href='https://docs.pyrogram.org/'>Pyrogram v2</a>\n"
+                    "<b>»» Language :</b> <a href='https://www.python.org/'>Python 3</a>\n"
+                    "<b>»» Database :</b> <a href='https://www.mongodb.com/docs/'>MongoDB</a>\n"
+                    "<b>»» Hosting :</b> <a href='https://render.com/'>Render</a>"
+                    "</blockquote>"
+                ),
+                parse_mode=constants.ParseMode.HTML
+            ),
+            reply_markup=about_keyboard()
+        )
+        return
+
+    # ---------- BACK TO START ----------
+    if query.data == "back_to_start":
+        await query.edit_message_media(
+            media=InputMediaPhoto(
+                media=PHOTO_MAIN,
+                caption=(
+                    "<code>WELCOME TO THE ADVANCED AUTO APPROVAL SYSTEM.\n"
+                    "WITH THIS BOT, YOU CAN MANAGE JOIN REQUESTS AND\n"
+                    "KEEP YOUR CHANNELS SECURE.</code>\n\n"
+                    "<blockquote><b>➥ MAINTAINED BY : "
+                    "<a href='https://t.me/Akuma_Rei_Kami'>Akuma_Rei</a>"
+                    "</b></blockquote>"
+                ),
+                parse_mode=constants.ParseMode.HTML
+            ),
+            reply_markup=start_keyboard()
+        )
+        return
+# ---------- RESTART BROADCAST (ALWAYS ON REDEPLOY) ----------
 async def broadcast_restart(application: Application):
-    restart_id = uuid.uuid4().hex
-
-    restart_col.update_one(
-        {"_id": "last"},
-        {"$set": {"rid": restart_id}},
-        upsert=True
-    )
-
     RE_caption = (
         "<blockquote>"
         "🔄 <b>Bot Restarted Successfully!\n\n"
-        "✅ Updates have been applied.\n"
+        "✅ New changes have been deployed.\n"
         "🚀 Bot is now online and running smoothly.\n\n"
         "Thank you for your patience.</b>"
         "</blockquote>"
@@ -808,54 +777,43 @@ async def broadcast_restart(application: Application):
         except:
             continue
 
-# ---------- MAIN ----------
 
+
+# ---------- POST INIT ----------
 async def post_init(application: Application):
     await broadcast_restart(application)
 
+
+# ---------- MAIN ----------
 def main():
     Thread(target=run_flask, daemon=True).start()
 
     application = (
         Application.builder()
         .token(BOT_TOKEN)
+        .job_queue(JobQueue())
         .post_init(post_init)
         .build()
     )
 
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CallbackQueryHandler(handle_callbacks))
+    application.add_handler(CommandHandler("genlink", genlink_cmd))
+    application.add_handler(CommandHandler("batch", batch_cmd))
     application.add_handler(CommandHandler("ban", ban_cmd))
     application.add_handler(CommandHandler("unban", unban_cmd))
     application.add_handler(CommandHandler("moderator", moderator_cmd))
     application.add_handler(CommandHandler("revmoderator", revmoderator_cmd))
     application.add_handler(CommandHandler("broadcast", broadcast_cmd))
-    application.add_handler(CommandHandler("genlink", genlink_cmd))
-    application.add_handler(CommandHandler("batch", batch_cmd))
     application.add_handler(CommandHandler("setdel", setdel_cmd))
     application.add_handler(CommandHandler("help", help_cmd))
     application.add_handler(ChatJoinRequestHandler(auto_approve))
-
-
     application.add_handler(
-    MessageHandler(filters.ChatType.PRIVATE & ~filters.COMMAND, private_handler)
-)
-
-
+        MessageHandler(filters.ChatType.PRIVATE & ~filters.COMMAND, private_handler)
+    )
 
     application.run_polling()
 
+
 if __name__ == "__main__":
     main()
-
-
-
-
-
-
-
-
-
-
-
-
