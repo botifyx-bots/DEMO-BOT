@@ -611,7 +611,7 @@ async def private_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "message_id": msg.message_id
         })
 
-        link = f"https://t.me/ANI_UPLODE_BOT?start={key}"
+        link = f"https://t.me/Seris_auto_approval_bot?start={key}"
 
         keyboard = InlineKeyboardMarkup(
             [[InlineKeyboardButton("🔗 Share", url=f"https://t.me/share/url?url={link}")]]
@@ -658,7 +658,7 @@ async def private_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             del BATCH_WAIT[uid]
 
-            link = f"https://t.me/ANI_UPLODE_BOT?start={batch_key}"
+            link = f"https://t.me/Seris_auto_approval_bot?start={batch_key}"
 
             keyboard = InlineKeyboardMarkup(
                 [[InlineKeyboardButton("🔗 Share", url=f"https://t.me/share/url?url={link}")]]
@@ -753,6 +753,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
