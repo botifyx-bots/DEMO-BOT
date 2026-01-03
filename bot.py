@@ -143,6 +143,25 @@ def get_auto_delete_seconds():
     if not data:
         return None
     return data["minutes"] * 60
+# ---------- AUTO DELETE WORKER ----------
+async def delete_messages(context: ContextTypes.DEFAULT_TYPE):
+    data = context.job.data
+
+    chat_id = data["chat_id"]
+    msg_ids = data.get("msg_ids", [])
+    alert_id = data.get("alert_id")
+
+    for mid in msg_ids:
+        try:
+            await context.bot.delete_message(chat_id, mid)
+        except:
+            pass
+
+    if alert_id:
+        try:
+            await context.bot.delete_message(chat_id, alert_id)
+        except:
+            pass
 
 # ---------- KEYBOARDS ----------
 
@@ -188,6 +207,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if key.startswith("BATCH_"):
             batch = batch_col.find_one({"_id": key})
             if batch:
+                sent_ids = []
+
                 for mid in range(batch["from_id"], batch["to_id"] + 1):
                     try:
                         await context.bot.copy_message(
@@ -195,8 +216,29 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                             from_chat_id=batch["chat_id"],
                             message_id=mid
                         )
+                        # PTB v22: track via last_message_id
+                        sent_ids.append(update.effective_chat.last_message_id)
                     except:
                         continue
+
+                delete_after = get_auto_delete_seconds()
+                if delete_after:
+                    alert = await context.bot.send_message(
+                        chat_id=update.effective_chat.id,
+                        text=f"<blockquote>⏳ These messages will be deleted in {delete_after//60} minute(s)</blockquote>",
+                        parse_mode=constants.ParseMode.HTML
+                    )
+
+                    context.job_queue.run_once(
+                        delete_messages,
+                        when=delete_after,
+                        data={
+                            "chat_id": update.effective_chat.id,
+                            "msg_ids": sent_ids,
+                            "alert_id": alert.message_id
+                        }
+                    )
+
                 return
 
         # ---------- GENLINK PAYLOAD ----------
@@ -207,6 +249,27 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 from_chat_id=data["chat_id"],
                 message_id=data["message_id"]
             )
+
+            sent_id = update.effective_chat.last_message_id
+
+            delete_after = get_auto_delete_seconds()
+            if delete_after:
+                alert = await context.bot.send_message(
+                    chat_id=update.effective_chat.id,
+                    text=f"<blockquote>⏳ This message will be deleted in {delete_after//60} minute(s)</blockquote>",
+                    parse_mode=constants.ParseMode.HTML
+                )
+
+                context.job_queue.run_once(
+                    delete_messages,
+                    when=delete_after,
+                    data={
+                        "chat_id": update.effective_chat.id,
+                        "msg_ids": [sent_id],
+                        "alert_id": alert.message_id
+                    }
+                )
+
             return
 
     # 👤 SAVE USER
@@ -218,7 +281,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # 👋 NORMAL START MESSAGE CONTINUES BELOW
     # (your existing start UI code)
-
 
     caption = (
         "<blockquote>WELCOME TO THE ADVANCED AUTO APPROVAL SYSTEM.\n"
@@ -558,6 +620,111 @@ async def private_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if text.startswith("/"):
         return
 
+    # ---------- GENLINK PROCESS ----------
+    if uid in GENLINK_WAIT:
+        GENLINK_WAIT.remove(uid)
+
+        msg = update.message
+        key = uuid.uuid4().hex[:12]
+
+        links_col.insert_one({
+            "_id": key,
+            "chat_id": msg.chat.id,
+            "message_id": msg.message_id
+        })
+
+        link = f"https://t.me/Seris_auto_approval_bot?start={key}"
+
+        keyboard = InlineKeyboardMarkup(
+            [[InlineKeyboardButton("🔗 Share", url=f"https://t.me/share/url?url={link}")]]
+        )
+
+        await msg.reply_text(
+            f"Here is your link:\n\n{link}",
+            reply_markup=keyboard,
+            disable_web_page_preview=True
+        )
+        return
+
+    # ---------- BATCH PROCESS ----------
+    if uid in BATCH_WAIT:
+        data = BATCH_WAIT[uid]
+
+        # ---------- FIRST MESSAGE ----------
+        if data["step"] == "first":
+
+            # ✅ accept forwarded message OR message link
+            if update.message.forward_from_chat:
+                data["chat_id"] = update.message.forward_from_chat.id
+                data["from_id"] = update.message.forward_from_message_id
+
+            elif update.message.entities:
+                for ent in update.message.entities:
+                    if ent.type == "url":
+                        try:
+                            parts = update.message.text.split("/")
+                            data["chat_id"] = int("-100" + parts[-2])
+                            data["from_id"] = int(parts[-1])
+                        except:
+                            return
+                        break
+                else:
+                    return
+            else:
+                return
+
+            data["step"] = "last"
+
+            await update.message.reply_text(
+                "<blockquote>Forward The Batch Last Message From Your Batch Channel (With Forward Tag)..</blockquote>",
+                parse_mode=constants.ParseMode.HTML
+            )
+            return
+
+        # ---------- LAST MESSAGE ----------
+        if data["step"] == "last":
+
+            if update.message.forward_from_chat:
+                to_id = update.message.forward_from_message_id
+
+            elif update.message.entities:
+                for ent in update.message.entities:
+                    if ent.type == "url":
+                        try:
+                            parts = update.message.text.split("/")
+                            to_id = int(parts[-1])
+                        except:
+                            return
+                        break
+                else:
+                    return
+            else:
+                return
+
+            batch_key = f"BATCH_{uuid.uuid4().hex[:12]}"
+
+            batch_col.insert_one({
+                "_id": batch_key,
+                "chat_id": data["chat_id"],
+                "from_id": data["from_id"],
+                "to_id": to_id
+            })
+
+            del BATCH_WAIT[uid]
+
+            link = f"https://t.me/Seris_auto_approval_bot?start={batch_key}"
+
+            keyboard = InlineKeyboardMarkup(
+                [[InlineKeyboardButton("🔗 Share", url=f"https://t.me/share/url?url={link}")]]
+            )
+
+            await update.message.reply_text(
+                f"Here is your link:\n\n{link}",
+                reply_markup=keyboard,
+                disable_web_page_preview=True
+            )
+            return
+
     # ---------- BAN ----------
     if uid in BAN_WAIT:
         BAN_WAIT.remove(uid)
@@ -597,79 +764,6 @@ async def private_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode=constants.ParseMode.HTML
         )
         return
-
-    # ---------- GENLINK PROCESS ----------
-    if uid in GENLINK_WAIT:
-        GENLINK_WAIT.remove(uid)
-
-        msg = update.message
-        key = uuid.uuid4().hex[:12]
-
-        links_col.insert_one({
-            "_id": key,
-            "chat_id": msg.chat.id,
-            "message_id": msg.message_id
-        })
-
-        link = f"https://t.me/Seris_auto_approval_bot?start={key}"
-
-        keyboard = InlineKeyboardMarkup(
-            [[InlineKeyboardButton("🔗 Share", url=f"https://t.me/share/url?url={link}")]]
-        )
-
-        await msg.reply_text(
-            f"Here is your link:\n\n{link}",
-            reply_markup=keyboard,
-            disable_web_page_preview=True
-        )
-        return
-
-    # ---------- BATCH PROCESS ----------
-    if uid in BATCH_WAIT:
-        data = BATCH_WAIT[uid]
-
-        if data["step"] == "first":
-            if not update.message.forward_from_chat:
-                return
-
-            data["chat_id"] = update.message.forward_from_chat.id
-            data["from_id"] = update.message.forward_from_message_id
-            data["step"] = "last"
-
-            await update.message.reply_text(
-                "<blockquote>Forward The Batch Last Message From Your Batch Channel (With Forward Tag)..</blockquote>",
-                parse_mode=constants.ParseMode.HTML
-            )
-            return
-
-        if data["step"] == "last":
-            if not update.message.forward_from_chat:
-                return
-
-            to_id = update.message.forward_from_message_id
-            batch_key = f"BATCH_{uuid.uuid4().hex[:12]}"
-
-            batch_col.insert_one({
-                "_id": batch_key,
-                "chat_id": data["chat_id"],
-                "from_id": data["from_id"],
-                "to_id": to_id
-            })
-
-            del BATCH_WAIT[uid]
-
-            link = f"https://t.me/Seris_auto_approval_bot?start={batch_key}"
-
-            keyboard = InlineKeyboardMarkup(
-                [[InlineKeyboardButton("🔗 Share", url=f"https://t.me/share/url?url={link}")]]
-            )
-
-            await update.message.reply_text(
-                f"Here is your link:\n\n{link}",
-                reply_markup=keyboard,
-                disable_web_page_preview=True
-            )
-            return
 
 # ---------- RESTART BROADCAST ----------
 
@@ -753,6 +847,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
