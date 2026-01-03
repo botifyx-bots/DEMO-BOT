@@ -24,6 +24,7 @@ from telegram.ext import (
 )
 from telegram.error import RetryAfter
 from telegram import constants
+from telegram.ext import ChatJoinRequestHandler
 
 # ================= CONFIG =================
 
@@ -53,11 +54,15 @@ users_col = db["users"]
 restart_col = db["restart"]
 ban_col = db["banned"]
 mods_col = db["moderators"]
+links_col = db["links"]
+batch_col = db["batches"]
 
 BAN_WAIT = set()
 UNBAN_WAIT = set()
 MOD_WAIT = set()
 REVMOD_WAIT = set()
+GENLINK_WAIT = set()
+BATCH_WAIT = {}
 
 # =========================================
 
@@ -160,22 +165,55 @@ def about_keyboard():
 # ---------- /START ----------
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # 🔒 BAN CHECK
     if is_banned(update.effective_user.id):
         return
+
+    # 🔒 FORCE SUB CHECK
     if not await is_user_joined(context.bot, update.effective_user.id):
         await force_sub_message(update)
         return
 
+        # ---------- BATCH ----------
+        if key.startswith("BATCH_"):
+            batch = batch_col.find_one({"_id": key})
+            if batch:
+                for mid in range(batch["from_id"], batch["to_id"] + 1):
+                    try:
+                        await context.bot.copy_message(
+                            chat_id=update.effective_chat.id,
+                            from_chat_id=batch["chat_id"],
+                            message_id=mid
+                        )
+                    except:
+                        continue
+                return
+       # 🔗 GENLINK PAYLOAD HANDLING (ADD HERE ⬇️)
+    if context.args:
+        key = context.args[0]
+        data = links_col.find_one({"_id": key})
+        if data:
+            await context.bot.copy_message(
+                chat_id=update.effective_chat.id,
+                from_chat_id=data["chat_id"],
+                message_id=data["message_id"]
+            )
+            return
+# 👤 SAVE USER
     users_col.update_one(
         {"_id": update.effective_user.id},
         {"$set": {"_id": update.effective_user.id}},
         upsert=True
     )
 
+    # 👋 NORMAL START MESSAGE CONTINUES BELOW
+    # (your existing start UI code)
+
+
     caption = (
-        "<code>WELCOME TO THE ADVANCED AUTO APPROVAL SYSTEM.\n"
+        "<blockquote>WELCOME TO THE ADVANCED AUTO APPROVAL SYSTEM.\n"
         "WITH THIS BOT, YOU CAN MANAGE JOIN REQUESTS AND\n"
-        "KEEP YOUR CHANNELS SECURE.</code>\n\n"
+        "KEEP YOUR CHANNELS SECURE.</blockquote>\n\n"
         "<blockquote><b>➥ MAINTAINED BY : "
         "<a href='https://t.me/Akuma_Rei_Kami'>Akuma_Rei</a>"
         "</b></blockquote>"
@@ -187,6 +225,116 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=start_keyboard(),
         parse_mode=constants.ParseMode.HTML
     )
+
+# ---------- AUTO APPROVAL WITH FORCE-SUB ----------
+async def auto_approve(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    join = update.chat_join_request
+    user = join.from_user
+    chat = join.chat
+
+    # 🔒 FORCE-SUB CHECK (REUSE EXISTING LOGIC)
+    if not await is_user_joined(context.bot, user.id):
+        try:
+            # reuse SAME force-sub UI
+            await context.bot.send_photo(
+                chat_id=user.id,
+                photo=FORCE_SUB_PHOTO,
+                caption=(
+                    f"<blockquote><b>◈ Hᴇʏ  {user.mention_html()} ×\n"
+                    "›› ʏᴏᴜ ᴍᴜsᴛ ᴊᴏɪɴ ᴀʟʟ ʀᴇǫᴜɪʀᴇᴅ ᴄʜᴀɴɴᴇʟs "
+                    "ʙᴇғᴏʀᴇ ʏᴏᴜʀ ʀᴇǫᴜᴇsᴛ ɪs ᴀᴘᴘʀᴏᴠᴇᴅ.</b></blockquote>\n\n"
+                    "<blockquote><b>›› Pᴏᴡᴇʀᴇᴅ ʙʏ : @BotifyX_Pro</b></blockquote>"
+                ),
+                reply_markup=force_sub_keyboard(),
+                parse_mode=constants.ParseMode.HTML
+            )
+        except:
+            pass
+        return  # ❌ DO NOT APPROVE
+
+    # ✅ APPROVE ONLY AFTER FORCE-SUB
+    await context.bot.approve_chat_join_request(
+        chat_id=chat.id,
+        user_id=user.id
+    )
+
+    # ✅ APPROVAL MESSAGE (YOUR FORMAT)
+    approval_caption = (
+        f"<blockquote>◈ Hᴇʏ {user.mention_html()} ×\n\n"
+        f"›› ʏᴏᴜʀ ʀᴇǫᴜᴇsᴛ ᴛᴏ ᴊᴏɪɴ {chat.title} "
+        "ʜᴀs ʙᴇᴇɴ ᴀᴘᴘʀᴏᴠᴇᴅ.</blockquote>\n\n"
+        "<blockquote>›› Pᴏᴡᴇʀᴇᴅ ʙʏ : "
+        "<a href='https://t.me/Akuma_Rei_Kami'>Akuma Rei</a></blockquote>"
+    )
+
+    buttons = InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton("🆘 Support", url="https://t.me/BotifyX_support"),
+                InlineKeyboardButton("👨‍💻 Developer", url="https://t.me/Akuma_Rei_Kami")
+            ]
+        ]
+    )
+
+    try:
+        await context.bot.send_photo(
+            chat_id=user.id,
+            photo="AgACAgUAAxkBAAM3aVafIH9b2c4DDN5njA73ooObksUAAhULaxsxubhWDcTCfP-ZwHkACAEAAwIAA3kABx4E",
+            caption=approval_caption,
+            reply_markup=buttons,
+            parse_mode=constants.ParseMode.HTML
+        )
+    except:
+        pass
+
+# ---------- HELP ----------
+async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if is_banned(update.effective_user.id):
+        return
+
+    help_text = (
+        "<code>🤖 BOT COMMANDS GUIDE</code>\n\n"
+        "<blockquote expandable>"
+        "➥ <b>/start</b> — Start the bot and access the main panel\n"
+        "➥ <b>/genlink</b> — Generate a shareable link for any file/message\n"
+        "➥ <b>/batch</b> — Generate a single link for multiple messages from a channel\n"
+        "➥ <b>/broadcast</b> — Broadcast a message to all users (Owner only)\n"
+        "➥ <b>/ban</b> — Ban a user from using the bot (Admin)\n"
+        "➥ <b>/unban</b> — Unban a previously banned user (Admin)\n"
+        "➥ <b>/moderator</b> — Add a moderator (Owner only)\n"
+        "➥ <b>/revmoderator</b> — Remove a moderator (Owner only)\n"
+        "➥ <b>/help</b> — Show this help menu</blockquote>\n\n"
+        "<blockquote expandable><b>👑 Credits</b>\n"
+        "This bot is developed and maintained by\n"
+        "<b>@Akuma_Rei_Kami</b>\n\n"
+        "<b>⚙️ Powered by</b>\n"
+        "• Python\n"
+        "• python-telegram-bot\n"
+        "• MongoDB\n"
+        "• Render Hosting"
+        "</blockquote>"
+    )
+
+    buttons = InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton("🆘 Support", url="https://t.me/BotifyX_support"),
+                InlineKeyboardButton("📢 Update Channel", url="https://t.me/BotifyX_Pro")
+            ],
+            [
+                InlineKeyboardButton("👨‍💻 Developer", url="https://t.me/Akuma_Rei_Kami"),
+                InlineKeyboardButton("➥ CLOSE", callback_data="close_msg")
+            ]
+        ]
+    )
+
+    await update.message.reply_photo(
+        photo="AgACAgUAAxkBAAM_aVakMx1bndT59YFQKkS7alJEtu8AAh0LaxsxubhWEEYErV7ehKYACAEAAwIAA3kABx4E",
+        caption=help_text,
+        reply_markup=buttons,
+        parse_mode=constants.ParseMode.HTML
+    )
+    
 # ---------- BROADCAST (REPLY MODE) ----------
 async def broadcast_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_owner(update.effective_user.id):
@@ -242,6 +390,131 @@ async def broadcast_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         report,
         parse_mode=constants.ParseMode.HTML
     )
+
+# ---------- GENLINK ----------
+async def genlink_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if is_banned(update.effective_user.id):
+        return
+
+    GENLINK_WAIT.add(update.effective_user.id)
+
+    await update.message.reply_text(
+        "<blockquote>Send A Message For To Get Your Shareable Link</blockquote>", parse_mode=constants.ParseMode.HTML)
+    
+# ---------- BATCH ----------
+async def batch_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if is_banned(update.effective_user.id):
+        return
+
+    BATCH_WAIT[update.effective_user.id] = {
+        "step": "first"
+    }
+
+    await update.message.reply_text(
+        "<blockquote>Forward The Batch First Message From your Batch Channel (With Forward Tag)..\n"
+        "or Give Me Batch First Message link from your batch channel</blockquote>", parse_mode=constants.ParseMode.HTML)
+    
+    
+    # ---------- GENLINK PROCESS ----------
+    if uid in GENLINK_WAIT:
+        GENLINK_WAIT.remove(uid)
+
+        msg = update.message
+
+        import uuid
+        key = uuid.uuid4().hex[:12]
+
+        links_col.insert_one({
+            "_id": key,
+            "chat_id": msg.chat.id,
+            "message_id": msg.message_id
+        })
+
+        link = f"https://t.me/ANI_UPLODE_BOT?start={key}"
+
+        share_url = (
+            "https://t.me/share/url?"
+            f"url={link}&text=Here%20is%20your%20file"
+        )
+
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("🔗 Share", url=share_url)]
+        ])
+
+        await update.message.reply_text(
+            f"Here is your link:\n\n{link}",
+            reply_markup=keyboard,
+            disable_web_page_preview=True
+        )
+        return
+
+    # ---------- BATCH PROCESS ----------
+    if uid in BATCH_WAIT:
+        data = BATCH_WAIT[uid]
+
+        # ---------- FIRST MESSAGE ----------
+        if data["step"] == "first":
+            if update.message.forward_from_chat:
+                data["chat_id"] = update.message.forward_from_chat.id
+                data["from_id"] = update.message.forward_from_message_id
+            else:
+                # message link support
+                try:
+                    parts = text.split("/")
+                    data["chat_id"] = int("-100" + parts[-2])
+                    data["from_id"] = int(parts[-1])
+                except:
+                    await update.message.reply_text("Invalid first message")
+                    return
+
+            data["step"] = "last"
+
+            await update.message.reply_text(
+                "<blockquote>Forward The Batch Last Message From Your Batch Channel (With Forward Tag)..\n"
+                "or  Give Me Batch last message link from your batch channel</blockquote>", parse_mode=constants.ParseMode.HTML)
+            return
+
+        # ---------- LAST MESSAGE ----------
+        if data["step"] == "last":
+            if update.message.forward_from_chat:
+                to_id = update.message.forward_from_message_id
+            else:
+                try:
+                    to_id = int(text.split("/")[-1])
+                except:
+                    await update.message.reply_text("Invalid last message")
+                    return
+
+            batch_key = f"BATCH_{uuid.uuid4().hex[:12]}"
+
+            batch_col.insert_one({
+                "_id": batch_key,
+                "chat_id": data["chat_id"],
+                "from_id": data["from_id"],
+                "to_id": to_id
+            })
+
+            del BATCH_WAIT[uid]
+
+            link = f"https://t.me/ANI_UPLODE_BOT?start={batch_key}"
+
+            share_url = (
+                "https://t.me/share/url?"
+                f"url={link}&text=Batch%20Files"
+            )
+
+            keyboard = InlineKeyboardMarkup([
+                [InlineKeyboardButton("🔗 Share", url=share_url)]
+            ])
+
+            await update.message.reply_text(
+                f"Here is your link:\n\n{link}",
+                reply_markup=keyboard,
+                disable_web_page_preview=True
+            )
+            return
+
+
 
 # ---------- BAN / UNBAN ----------
 
@@ -453,6 +726,10 @@ def main():
     application.add_handler(CommandHandler("moderator", moderator_cmd))
     application.add_handler(CommandHandler("revmoderator", revmoderator_cmd))
     application.add_handler(CommandHandler("broadcast", broadcast_cmd))
+    application.add_handler(CommandHandler("genlink", genlink_cmd))
+    application.add_handler(CommandHandler("help", help_cmd))
+    application.add_handler(ChatJoinRequestHandler(auto_approve))
+
 
     application.add_handler(
         MessageHandler(filters.TEXT & filters.ChatType.PRIVATE, private_handler)
@@ -462,6 +739,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
