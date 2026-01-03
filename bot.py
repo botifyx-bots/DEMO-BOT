@@ -58,6 +58,7 @@ BAN_WAIT = set()
 UNBAN_WAIT = set()
 MOD_WAIT = set()
 REVMOD_WAIT = set()
+BROADCAST_WAIT = set()
 
 # =========================================
 
@@ -187,6 +188,17 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=start_keyboard(),
         parse_mode=constants.ParseMode.HTML
     )
+# ---------- BROADCAST ----------
+async def broadcast_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_owner(update.effective_user.id):
+        return
+
+    BROADCAST_WAIT.add(update.effective_user.id)
+
+    await update.message.reply_text(
+        "<blockquote>Send the message you want to broadcast</blockquote>",
+        parse_mode=constants.ParseMode.HTML
+    )
 
 # ---------- BAN / UNBAN ----------
 
@@ -286,6 +298,50 @@ async def handle_callbacks(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def private_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if is_banned(update.effective_user.id):
+        return
+    if uid in BROADCAST_WAIT:
+        BROADCAST_WAIT.remove(uid)
+
+        total = users_col.count_documents({})
+        success = 0
+        blocked = 0
+        deleted = 0
+        failed = 0
+
+        for user in users_col.find({}):
+            try:
+                await context.bot.send_message(
+                    chat_id=user["_id"],
+                    text=text
+                )
+                success += 1
+
+            except RetryAfter as e:
+                await asyncio.sleep(e.retry_after)
+                failed += 1
+
+            except Exception as e:
+                err = str(e).lower()
+                if "blocked" in err:
+                    blocked += 1
+                elif "deleted" in err:
+                    deleted += 1
+                else:
+                    failed += 1
+
+        report = (
+            "<b>Broadcast completed</b>\n\n"
+            f"◇ Total Users: {total}\n"
+            f"◇ Successful: {success}\n"
+            f"◇ Blocked Users: {blocked}\n"
+            f"◇ Deleted Accounts: {deleted}\n"
+            f"◇ Unsuccessful: {failed}"
+        )
+
+        await update.message.reply_text(
+            report,
+            parse_mode=constants.ParseMode.HTML
+        )
         return
 
     if not update.message or not update.message.text:
@@ -397,6 +453,7 @@ def main():
     application.add_handler(CommandHandler("unban", unban_cmd))
     application.add_handler(CommandHandler("moderator", moderator_cmd))
     application.add_handler(CommandHandler("revmoderator", revmoderator_cmd))
+    application.add_handler(CommandHandler("broadcast", broadcast_cmd))
 
     application.add_handler(
         MessageHandler(filters.TEXT & filters.ChatType.PRIVATE, private_handler)
@@ -406,6 +463,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
