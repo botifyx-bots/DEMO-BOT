@@ -493,7 +493,8 @@ async def private_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     uid = update.effective_user.id
-    text = update.message.text.strip() if update.message.text else None
+    msg = update.message
+    text = msg.text.strip() if msg.text else None
 
     # Ignore commands
     if text and text.startswith("/"):
@@ -503,7 +504,6 @@ async def private_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if uid in GENLINK_WAIT:
         GENLINK_WAIT.remove(uid)
 
-        msg = update.message
         key = uuid.uuid4().hex[:12]
 
         links_col.insert_one({
@@ -525,110 +525,109 @@ async def private_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-# ---------- BATCH PROCESS ----------
-if uid in BATCH_WAIT:
-    data = BATCH_WAIT[uid]
-    msg = update.message
+    # ---------- BATCH PROCESS ----------
+    if uid in BATCH_WAIT:
+        data = BATCH_WAIT[uid]
 
-    # ----- FIRST MESSAGE -----
-    if data["step"] == "first":
+        # ----- FIRST MESSAGE -----
+        if data["step"] == "first":
 
-        # ✅ NEW Telegram forward system (PTB v20+)
-        if msg.forward_origin and msg.forward_origin.chat:
-            data["chat_id"] = msg.forward_origin.chat.id
-            data["from_id"] = msg.forward_origin.message_id
+            # ✅ NEW Telegram forward system (PTB v20+)
+            if msg.forward_origin and msg.forward_origin.chat:
+                data["chat_id"] = msg.forward_origin.chat.id
+                data["from_id"] = msg.forward_origin.message_id
 
-        # ✅ Old-style forward support
-        elif msg.forward_from_chat:
-            data["chat_id"] = msg.forward_from_chat.id
-            data["from_id"] = msg.forward_from_message_id
+            # ✅ Old-style forward support
+            elif msg.forward_from_chat:
+                data["chat_id"] = msg.forward_from_chat.id
+                data["from_id"] = msg.forward_from_message_id
 
-        # ✅ Message link support
-        elif text and "t.me/c/" in text:
-            try:
-                parts = text.split("/")
-                data["chat_id"] = int("-100" + parts[-2])
-                data["from_id"] = int(parts[-1])
-            except:
+            # ✅ Message link support
+            elif text and "t.me/c/" in text:
+                try:
+                    parts = text.split("/")
+                    data["chat_id"] = int("-100" + parts[-2])
+                    data["from_id"] = int(parts[-1])
+                except:
+                    await msg.reply_text(
+                        "<blockquote>❌ Invalid link. Please send a valid message link.</blockquote>",
+                        parse_mode=constants.ParseMode.HTML
+                    )
+                    return
+            else:
                 await msg.reply_text(
-                    "<blockquote>❌ Invalid link. Please send a valid message link.</blockquote>",
+                    "<blockquote>❌ Please forward a message from a channel.</blockquote>",
                     parse_mode=constants.ParseMode.HTML
                 )
                 return
-        else:
+
+            data["step"] = "last"
+
             await msg.reply_text(
-                "<blockquote>❌ Please forward a message from a channel.</blockquote>",
+                "<blockquote>Forward The Batch Last Message From Your Batch Channel (With Forward Tag)..</blockquote>",
                 parse_mode=constants.ParseMode.HTML
             )
             return
 
-        data["step"] = "last"
+        # ----- LAST MESSAGE -----
+        if data["step"] == "last":
 
-        await msg.reply_text(
-            "<blockquote>Forward The Batch Last Message From Your Batch Channel (With Forward Tag)..</blockquote>",
-            parse_mode=constants.ParseMode.HTML
-        )
-        return
+            # ✅ NEW Telegram forward system
+            if msg.forward_origin and msg.forward_origin.chat:
+                to_id = msg.forward_origin.message_id
 
-    # ----- LAST MESSAGE -----
-    if data["step"] == "last":
+            # ✅ Old-style forward
+            elif msg.forward_from_chat:
+                to_id = msg.forward_from_message_id
 
-        # ✅ NEW Telegram forward system
-        if msg.forward_origin and msg.forward_origin.chat:
-            to_id = msg.forward_origin.message_id
-
-        # ✅ Old-style forward
-        elif msg.forward_from_chat:
-            to_id = msg.forward_from_message_id
-
-        # ✅ Message link
-        elif text and "t.me/c/" in text:
-            try:
-                to_id = int(text.split("/")[-1])
-            except:
+            # ✅ Message link
+            elif text and "t.me/c/" in text:
+                try:
+                    to_id = int(text.split("/")[-1])
+                except:
+                    await msg.reply_text(
+                        "<blockquote>❌ Invalid link. Please send a valid message link.</blockquote>",
+                        parse_mode=constants.ParseMode.HTML
+                    )
+                    return
+            else:
                 await msg.reply_text(
-                    "<blockquote>❌ Invalid link. Please send a valid message link.</blockquote>",
+                    "<blockquote>❌ Please forward the last message from the channel.</blockquote>",
                     parse_mode=constants.ParseMode.HTML
                 )
                 return
-        else:
+
+            # ✅ Safety check
+            if to_id < data["from_id"]:
+                await msg.reply_text(
+                    "<blockquote>❌ Last message ID must be greater than first message ID.</blockquote>",
+                    parse_mode=constants.ParseMode.HTML
+                )
+                return
+
+            batch_key = f"BATCH_{uuid.uuid4().hex[:12]}"
+
+            batch_col.insert_one({
+                "_id": batch_key,
+                "chat_id": data["chat_id"],
+                "from_id": data["from_id"],
+                "to_id": to_id
+            })
+
+            del BATCH_WAIT[uid]
+
+            link = f"https://t.me/Seris_auto_approval_bot?start={batch_key}"
+
+            keyboard = InlineKeyboardMarkup(
+                [[InlineKeyboardButton("🔗 Share", url=f"https://t.me/share/url?url={link}")]]
+            )
+
             await msg.reply_text(
-                "<blockquote>❌ Please forward the last message from the channel.</blockquote>",
-                parse_mode=constants.ParseMode.HTML
+                f"Here is your link:\n\n{link}",
+                reply_markup=keyboard,
+                disable_web_page_preview=True
             )
             return
-
-        # ✅ Safety check
-        if to_id < data["from_id"]:
-            await msg.reply_text(
-                "<blockquote>❌ Last message ID must be greater than first message ID.</blockquote>",
-                parse_mode=constants.ParseMode.HTML
-            )
-            return
-
-        batch_key = f"BATCH_{uuid.uuid4().hex[:12]}"
-
-        batch_col.insert_one({
-            "_id": batch_key,
-            "chat_id": data["chat_id"],
-            "from_id": data["from_id"],
-            "to_id": to_id
-        })
-
-        del BATCH_WAIT[uid]
-
-        link = f"https://t.me/Seris_auto_approval_bot?start={batch_key}"
-
-        keyboard = InlineKeyboardMarkup(
-            [[InlineKeyboardButton("🔗 Share", url=f"https://t.me/share/url?url={link}")]]
-        )
-
-        await msg.reply_text(
-            f"Here is your link:\n\n{link}",
-            reply_markup=keyboard,
-            disable_web_page_preview=True
-        )
-        return
 
     # ---------- BAN ----------
     if uid in BAN_WAIT:
@@ -848,5 +847,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
